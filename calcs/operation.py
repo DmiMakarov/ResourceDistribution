@@ -23,7 +23,9 @@ class LinearOperation():
 
     def calc(self, count: int) -> int:
         '''Calculate standart time'''
-        return count * self.standart_time
+        self.time: int =  int(count * self.standart_time)
+
+        return self.time
     
 class PiecewiseOperation(LinearOperation):
     '''
@@ -36,10 +38,25 @@ class PiecewiseOperation(LinearOperation):
                  standart_time: int,
                  resources: list[Resource],
                  employees: list[Employee],
-                 count_params: int):
+                 time_per_element: float,
+                 max_count: int):
+        '''
+        Same as LinearOperation
+
+        time_per_element - distance between details / velocity of conveyer
+        max_count - max_count on conveyer belt
+        '''
         super().__init__(name, standart_time, resources, employees)
-        self.count_params: int = count_params
+        self.time_per_element: int = time_per_element
+        self.max_count = max_count
 
     def calc(self, count: int) -> int:
         '''Calculate time for piecewise-linear operations'''
-        return count * self.count_params * self.standart_time
+        self.time: int = (self.standart_time + (self.max_count - 1) * self.time_per_element) * count // self.max_count
+        
+        if count % self.max_count > 0:
+            self.time += self.standart_time + (count % self.max_count  - 1) * self.time_per_element
+
+        self.time = int(self.time)
+
+        return self.time
