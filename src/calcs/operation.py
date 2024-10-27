@@ -1,8 +1,8 @@
 '''Define operation class'''
-from calcs.resource import Resource
-from calcs.employee import Employee
+from src.calcs.resource import Resource
+from src.calcs.employee import Employee
 
-class LinearOperation():
+class Operation():
     '''
     Define linear oparation class
 
@@ -27,7 +27,7 @@ class LinearOperation():
 
         return self.time
     
-class PiecewiseOperation(LinearOperation):
+class ConveyorOperation(Operation):
     '''
     Define piecewise-linear oparation class
 
