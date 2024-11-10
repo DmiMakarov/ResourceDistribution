@@ -10,3 +10,4 @@ class Detail():
     name - name of detail
     '''
     name: str
+    count: int
