@@ -22,12 +22,12 @@ class TechMap():
             raise ValueError(f'В технической картк {filepath} отсутсвуют необходимые заголовки: {diff_columns}')
 
         #Skip last None line
-        if data.iloc[-1, 'Изделие'] is None:
+        if pd.isna(data.iloc[data.shape[0] - 1]['Изделие']):
             data = data.iloc[:data.shape[0] - 1, :]
         
         index_to_split = data[data['Изделие'].str.contains('Работа')].index[0]
         self.detail: pd.DataFrame = data.iloc[1:index_to_split, :]
-        self.operations: pd.DataFrame = self.data.iloc[index_to_split + 1:, :]
+        self.operations: pd.DataFrame = data.iloc[index_to_split + 1:, :]
         
         self.name = data.iloc[1]['Изделие']
 
@@ -46,7 +46,7 @@ class TechMap():
             current_operation['count'] = operation_row['Кол-во'] / operation_row['Кол-во изделий'] 
             current_operation['add_time'] = float(operation_full_name[operation_full_name.find('Tпз:') + len('Tпз:'):].replace(',', '.'))
 
-            if current_operation['Изделие'] in self.conveyor_operations:
+            if current_operation['name'] in self.conveyor_operations:
                 operation: ConveyorOperation = ConveyorOperation(name=current_operation['name'], 
                                                                  standard_time=current_operation['count'],
                                                                  tpz=current_operation['add_time'],
@@ -59,4 +59,4 @@ class TechMap():
 
             operations.append(operation)
  
-        return operation
+        return operations

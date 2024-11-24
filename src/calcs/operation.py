@@ -20,7 +20,7 @@ class Operation():
 
     def calc(self, count: int) -> float:
         '''Calculate standard time'''
-        self.time: float =  int(count * self.standard_time) + self.tpz
+        self.time: float =  count * self.standard_time + self.tpz
 
         return self.time
     

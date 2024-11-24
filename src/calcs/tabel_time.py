@@ -14,7 +14,7 @@ class TableTime():
 
     def read_all_tech_maps(self) -> None:
         '''Read all tech maps'''
-        path: str = '../data/tech_map'
+        path: str = './data/tech_map'
 
         for filename in os.listdir(path):
             if (filename.endswith(".xlsx") or filename.endswith(".xls")) and filename.startswith('Тех_карта'): 
@@ -28,7 +28,7 @@ class TableTime():
         operations_df: list[pd.DataFrame] = []
 
         for detail in details:
-            detail_name: str = detail.name.replace('_', '').replace('.', '').replace('(', '').replace(')', '').replace(' ', '').replace('-', '')
+            detail_name: str = detail.name.replace('_', '').replace('.', '').replace('(', '').replace(')', '').replace(' ', '').replace('-', '') + '.xlsx'
 
             if detail_name not in self.tech_maps:
                 raise ValueError(f'Отсутсвует тех карта для изделия {detail.name}')
