@@ -49,9 +49,9 @@ class ConveyorOperation(Operation):
         '''Calculate time for piecewise-linear operations'''
         self.time = (self.standard_time + (self.max_count - 1) * self.time_per_element) * count // self.max_count
         
-        if count % self.max_count > 0:
+        if count // self.max_count > 0:
             self.time += self.standard_time + (count % self.max_count  - 1) * self.time_per_element
 
-        self.time = self.time + self.tpz
+        self.time += self.tpz
 
         return self.time

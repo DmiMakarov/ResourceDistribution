@@ -15,11 +15,12 @@ class TechMap():
 
     def from_excel(self, filepath: str = '../data/tech_map/Тех_карта_ЗМС_ДМГС_6_00_000_02_01_Дверь_тип_6_990х2040_левая.xlsx') -> None:
         data: pd.DataFrame = pd.read_excel(io=filepath)
+        data[['Кол-во', 'Tпз']] = data[['Кол-во', 'Tпз']].fillna(0)
 
         diff_columns: set[str] = self.columns.difference(set(data.columns))
 
         if len(diff_columns) != 0:
-            raise ValueError(f'В технической картк {filepath} отсутсвуют необходимые заголовки: {diff_columns}')
+            raise ValueError(f'В технической картe {filepath} отсутсвуют необходимые заголовки: {diff_columns}')
 
         #Skip last None line
         if pd.isna(data.iloc[data.shape[0] - 1]['Изделие']):
@@ -44,7 +45,7 @@ class TechMap():
                 continue
 
             current_operation['count'] = operation_row['Кол-во'] / operation_row['Кол-во изделий'] 
-            current_operation['add_time'] = float(operation_full_name[operation_full_name.find('Tпз:') + len('Tпз:'):].replace(',', '.'))
+            current_operation['add_time'] = float(operation_row['Tпз'])
 
             if current_operation['name'] in self.conveyor_operations:
                 operation: ConveyorOperation = ConveyorOperation(name=current_operation['name'], 
