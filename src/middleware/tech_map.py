@@ -1,9 +1,12 @@
 """Define TechMap reader"""
+from __future__ import annotations
+
 import pandas as pd
 
-from calcs.operation import Operation, ConveyorOperation
+from calcs.operation import ConveyorOperation, Operation
 
-class TechMap():
+
+class TechMap:
     """
     Parse technical map for detail and prepare necessary data
     """
@@ -21,7 +24,8 @@ class TechMap():
         diff_columns: set[str] = self.columns.difference(set(data.columns))
 
         if len(diff_columns) != 0:
-            raise ValueError(f"В технической картe {filepath} отсутсвуют необходимые заголовки: {diff_columns}")
+            err: str = f"В технической картe {filepath} отсутсвуют необходимые заголовки: {diff_columns}"
+            raise ValueError(err)
 
         #Skip last None line
         if pd.isna(data.iloc[data.shape[0] - 1]["Изделие"]):
@@ -33,7 +37,7 @@ class TechMap():
 
         self.name = data.iloc[1]["Изделие"]
 
-    def get_operations(self):
+    def get_operations(self) -> list[Operation | ConveyorOperation]:
         operations: list[Operation | ConveyorOperation] = []
         current_operation: dict = {}
 

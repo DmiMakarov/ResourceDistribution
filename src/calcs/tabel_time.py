@@ -1,14 +1,19 @@
 """Calculate table time for input details"""
 import os
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
-from middleware.tech_map import TechMap
 from calcs.detail import Detail
-from calcs.operation import Operation, ConveyorOperation
+from middleware.tech_map import TechMap
 
-class TableTime():
+if TYPE_CHECKING:
+    from calcs.operation import ConveyorOperation, Operation
+
+
+class TableTime:
     """Calculate table time for input details"""
-    def __init__(self):
+    def __init__(self) -> None:
         self.tech_maps: dict[str, TechMap] = {}
         self.read_all_tech_maps()
 
@@ -31,7 +36,8 @@ class TableTime():
             detail_name: str = detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"
 
             if detail_name not in self.tech_maps:
-                raise ValueError(f"Отсутсвует тех карта для изделия {detail.name}")
+                err: str = f"Отсутсвует тех карта для изделия {detail.name}"
+                raise ValueError(err)
 
             operations: list[Operation | ConveyorOperation] = self.tech_maps[detail_name].get_operations()
 

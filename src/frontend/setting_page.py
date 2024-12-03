@@ -49,7 +49,8 @@ with st.container():
     for uploaded_file in uploaded_files:
         #TODO(me): add validation
         #001
-        logger.info(f"adding uploaded file: {uploaded_file.name}")
+        info: str = f"adding uploaded file: {uploaded_file.name}"
+        logger.info(info)
         pd.read_excel(BytesIO(uploaded_file.read())).to_excel(f"./data/tech_map/{uploaded_file.name}")
 
     if len(uploaded_files) > 0:
@@ -61,7 +62,11 @@ with st.container():
                                key=st.session_state.edit_table)
 
 with st.container():
-    today: datetime.date = datetime.date.today()
+
+    today: datetime.date = datetime.datetime.now(
+            tz=datetime.timezone(datetime.timedelta(hours=3), name='МСК'),
+            ).today()
+
     dates_range: tuple[datetime.date, datetime.date] = st.date_input(
                                                                     "Выберете интервал рассчёта",
                                                                     (today, today + relativedelta(months=1)),

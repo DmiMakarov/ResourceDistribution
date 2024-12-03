@@ -1,6 +1,7 @@
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 logger: logging.Logger = logging.getLogger()
 
@@ -20,7 +21,8 @@ def calculate_shifts(operation_df: pd.DataFrame, config: pd.DataFrame, max_days:
 
     if len(unknown_operations) > 0:
         merged_times = merged_times.loc[~merged_times.isin(unknown_operations)]
-        logger.warning(f"Skipped folowing operations: {unknown_operations}. Didnt find them into configs")
+        warn: str = f"Skipped folowing operations: {unknown_operations}. Didnt find them into configs"
+        logger.warning(warn)
 
     merged_times["time_per_machine"] = merged_times["Time"] / merged_times["Количество станков"]
     merged_times = merged_times.loc[np.repeat(merged_times.index, merged_times["Количество станков"])]

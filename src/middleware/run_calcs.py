@@ -1,12 +1,11 @@
 import datetime
+import logging
 
 import pandas as pd
 
 from calcs.calculate_shifts import calculate_shifts
 from calcs.detail import Detail
 from calcs.tabel_time import TableTime
-
-import logging
 
 logger: logging.Logger = logging.getLogger(__name__)
 
