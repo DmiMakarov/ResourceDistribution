@@ -4,7 +4,9 @@ from __future__ import annotations
 import pandas as pd
 
 from calcs.operation import ConveyorOperation, Operation
+import logging
 
+logger: logging.Logger = logging.getLogger(__name__)
 
 class TechMap:
     """
@@ -14,7 +16,24 @@ class TechMap:
         self.columns: set[str] = {"Изделие", "Кол-во изделий", "Компонент", "Подразделение", "Кол-во", "Ед. изм.", "Цена", "Сумма", "Поставщик", "Tпз"}
         #TODO(me): move to params
         #002
-        self.conveyor_operations: dict[str, dict[str, int]] = {"Окрашивание порошком": {"minute_per_element": 15, "max_count": 50}}
+        self.conveyor_operations: dict[str, dict[str, int]] = {"Окрашивание порошком": [
+                                                                                        {
+                                                                                            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 
+                                                                                                {
+                                                                                                    "minute_per_element": 15, 
+                                                                                                    "max_count": 23, 
+                                                                                                    "standard_time": 180
+                                                                                                }
+                                                                                        },
+                                                                                        {
+                                                                                            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 
+                                                                                                {
+                                                                                                    "minute_per_element": 15, 
+                                                                                                    "max_count": 50, 
+                                                                                                    "standard_time": 11 * 50 * 60 / 212
+                                                                                                }
+                                                                                        }]
+                                                                }
         self.name: str | None = None
 
     def from_excel(self, filepath: str = "../data/tech_map/Тех_карта_ЗМС_ДМГС_6_00_000_02_01_Дверь_тип_6_990х2040_левая.xlsx") -> None:
@@ -35,7 +54,7 @@ class TechMap:
         self.detail: pd.DataFrame = data.iloc[1:index_to_split, :]
         self.operations: pd.DataFrame = data.iloc[index_to_split + 1:, :]
 
-        self.name = data.iloc[1]["Изделие"]
+        self.name = data.iloc[2]["Изделие"].replace("-", "").replace(" ", "").replace("(", "").replace(")", "").replace("_", "").replace(".", "") + ".xlsx"
 
     def get_operations(self) -> list[Operation | ConveyorOperation]:
         operations: list[Operation | ConveyorOperation] = []
@@ -53,11 +72,25 @@ class TechMap:
             current_operation["add_time"] = float(operation_row["Tпз"])
 
             if current_operation["name"] in self.conveyor_operations:
+                
+                conveyor_params: dict = {}
+
+                for params in self.conveyor_operations[current_operation["name"]]:
+                    if self.name in params:
+                        conveyor_params = params[self.name]
+
+                if len(conveyor_params) == 0:
+                    err: str = f"Not found conveyor params for {self.name}"
+                    logger.error(err)
+                    raise ValueError(err)
+                
+                logger.info(current_operation)
+
                 operation: ConveyorOperation = ConveyorOperation(name=current_operation["name"],
-                                                                 standard_time=current_operation["count"],
+                                                                 standard_time=conveyor_params["standard_time"] / 60,
                                                                  tpz=current_operation["add_time"],
-                                                                 time_per_element=self.conveyor_operations[current_operation["name"]]["minute_per_element"] / 60,
-                                                                 max_count=self.conveyor_operations[current_operation["name"]]["max_count"])
+                                                                 time_per_element=conveyor_params["minute_per_element"] / 60,
+                                                                 max_count=conveyor_params["max_count"])
             else:
                 operation: Operation = Operation(name=current_operation["name"],
                                                  standard_time=current_operation["count"],

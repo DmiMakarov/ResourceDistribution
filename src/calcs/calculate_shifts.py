@@ -20,7 +20,7 @@ def calculate_shifts(operation_df: pd.DataFrame, config: pd.DataFrame, max_days:
     #logger.info(unknown_operations)
 
     if len(unknown_operations) > 0:
-        merged_times = merged_times.loc[~merged_times.isin(unknown_operations)]
+        #merged_times = merged_times.loc[~merged_times.isin(unknown_operations)]
         warn: str = f"Skipped folowing operations: {unknown_operations}. Didnt find them into configs"
         logger.warning(warn)
 

@@ -47,10 +47,19 @@ class ConveyorOperation(Operation):
 
     def calc(self, count: int) -> float:
         """Calculate time for piecewise-linear operations"""
-        self.time = (self.standard_time + (self.max_count - 1) * self.time_per_element) * count // self.max_count
 
-        if count // self.max_count > 0:
-            self.time += self.standard_time + (count % self.max_count  - 1) * self.time_per_element
+        n_times: int = count // self.max_count
+        remain: int = count % self.max_count
+        
+        self.time = self.standard_time * n_times
+
+        if remain > 0:
+            self.time += self.standard_time
+
+        #self.time = (self.standard_time + (count - 1) * self.time_per_element) * n_times
+        
+        #if remain > 0:
+        #    self.time += self.standard_time + (remain  - 1) * self.time_per_element
 
         self.time += self.tpz
 

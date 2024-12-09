@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 st.markdown("Результаты расчётов")
@@ -23,6 +24,7 @@ with st.container():
     operations: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx")
     shifts: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx")
 
+    operations['Time'] = np.round(operations['Time'], 1)
     """## Количество нормо-часов операций"""
     st.dataframe(data=operations.drop(columns=["Unnamed: 0"]), key=st.session_state.calc_result_df)
     """## Смены"""

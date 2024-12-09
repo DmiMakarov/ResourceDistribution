@@ -7,7 +7,7 @@ from calcs.calculate_shifts import calculate_shifts
 from calcs.detail import Detail
 from calcs.tabel_time import TableTime
 
-logger: logging.Logger = logging.getLogger(__name__)
+#logger: logging.Logger = logging.getLogger(__name__)
 
 def run_calcs(request_id: int,
               input_details: pd.DataFrame,

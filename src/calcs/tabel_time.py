@@ -7,8 +7,7 @@ import pandas as pd
 from calcs.detail import Detail
 from middleware.tech_map import TechMap
 
-if TYPE_CHECKING:
-    from calcs.operation import ConveyorOperation, Operation
+from calcs.operation import ConveyorOperation, Operation
 
 
 class TableTime:
@@ -45,6 +44,9 @@ class TableTime:
             operations_time: list[float] = []
 
             for operation in operations:
+                if isinstance(operation, ConveyorOperation) and operation.name in operations_name:
+                    continue
+
                 operations_name.append(operation.name)
                 operations_time.append(operation.calc(detail.count))
 
