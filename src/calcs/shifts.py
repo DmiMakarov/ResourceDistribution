@@ -10,18 +10,16 @@ class ShiftOperation():
 
     def __init__(self,
                  operation_name: str,
-                 detail_per_hour: float,
+                 detail_per_hour: dict[str, float],
                  prev_operations: dict[str, int],
                  next_operations: set[str],
-                 has_night: bool = True
                  ) -> None:
         self.operation_name: str = operation_name
-        self.detail_per_hour: float = detail_per_hour
-        self.has_night = has_night
+        self.detail_per_hour: dict[str, float] = detail_per_hour
         #for parallel operations
 
-        self.prev_operations: dict[str, int] = prev_operations
-        self._next_operations: set[str] = next_operations
+        self.prev_operations: dict[str, dict[str, int]] = prev_operations
+        self._next_operations: dict[str, set[str]] = next_operations
 
         #Day - false, Night - True
         self.fill_dates: list[tuple[datetime.date, bool]] = []
@@ -38,33 +36,52 @@ class ShiftOperation():
     #TODO расширить prev_empty до словаря (надо ли)
     def next(self,
              date: datetime.date,
-             prev_empty: bool) -> tuple[int, bool]:
+             is_night: bool,
+             prev_empty: bool,
+             detail_name: str) -> tuple[int, bool]:
 
-        min_available_details: int = min([value for _, value in  self.prev_operations])
+        min_available_details: int = min([value for _, value in  self.prev_operation[detail_name].items()])
 
-        if (min_available_details / self.detail_per_hour <= 12 + self.has_night * 12) and not prev_empty:
+        if (min_available_details / self.detail_per_hour[detail_name] <= 12 ) and not prev_empty:
             return 0, False
 
-        details_in_this_date: int = min(self.detail_per_hour * (12 + self.has_night * 12),
-                                        min_available_details / self.detail_per_hour)
-        self.fill_dates.append((date, False))
+        day_available: bool = is_night
+        night_available: bool = is_night
 
-        if self.has_night:
-            self.fill_dates.append((date, True))
+        for dt, is_day in self.fill_dates:
+            if dt == date:
+                if is_day:
+                    day_available = False
+                else:
+                    night_available = False
+
+        if not day_available and night_available:
+            return 0, False
+
+        details_in_this_date: int = int(min(self.detail_per_hour[detail_name] * 12 * (day_available + night_available),
+                                        min_available_details / self.detail_per_hour[detail_name]))
+        self.fill_dates.append((date, is_night))
 
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
-        for op in self.prev_operations:
-            self.prev_operations[op] -= min_available_details
+        for op in self.prev_operations[detail_name]:
+            self.prev_operations[detail_name][op] -= min_available_details
 
-            prev_empty = prev_empty and (self.prev_operations[op] == 0)
+            prev_empty = prev_empty and (self.prev_operations[detail_name][op] == 0)
 
         return details_in_this_date, prev_empty
 
 
-class ShiftBuilder:
+#что мне теперь надо для вычислений
+#1. Составить конфигурации всех деталей
+#2. Заполнить detail_per_hour (идеально по конфигу, но пофиг, пока так сделаем)
+#3. Написать цикл вычислений
+#4. Собрать в одну таблицу
 
-    def __init__(self):
-        self.shifts: list[ShiftOperation] = []
+class ShiftCalc:
+
+    def __init__(self,
+                 shifts: list[ShiftOperation]):
+        self.shifts: list[ShiftOperation] = shifts
 
     def calc():
         while true:
