@@ -52,4 +52,17 @@ class TableTime:
 
             operations_df.append(pd.DataFrame({"Operation": operations_name, "Time": operations_time}))
 
+            if self.name == "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 
+                map_values: dict[str, str] = {
+                                                "Зачистная": "Слесарная",
+                                                "Зачистная / снять усиление": "Слесарная",
+                                                "Лазерная резка трубы": "Вальцовочная",
+                                                "Ленточношлифовальная": "Слесарная",
+                                                "Сварка вольфрамом в среде защитного газа (TIG)": "Сварка полуавтоматом в среде защитного газа (MIG)",
+                                                "Сварочная роботизированная": "Сварка полуавтоматом в среде защитного газа (MIG)",
+                                                "Слесарная / зачистить торец после лазер.резки, притупить кромки": "Слесарная"
+                                                }
+
+                operations_df[-1] = operations_df[-1].rename(map_values).groupby('Operation').sum().reset_index()
+
         return pd.concat(operations_df).groupby(by="Operation").sum().reset_index()

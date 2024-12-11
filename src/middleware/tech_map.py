@@ -56,6 +56,8 @@ class TechMap:
 
         self.name = data.iloc[2]["Изделие"].replace("-", "").replace(" ", "").replace("(", "").replace(")", "").replace("_", "").replace(".", "") + ".xlsx"
 
+
+
     def get_operations(self) -> list[Operation | ConveyorOperation]:
         operations: list[Operation | ConveyorOperation] = []
         current_operation: dict = {}
