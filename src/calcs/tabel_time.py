@@ -26,10 +26,10 @@ class TableTime:
                 self.tech_maps[name] = TechMap()
                 self.tech_maps[name].from_excel(path + "/" + filename)
 
-    def calc(self, details: list[Detail]) -> pd.DataFrame:
+    def calc(self, details: list[Detail]) -> dict[str, pd.DataFrame]:
         self.read_all_tech_maps()
 
-        operations_df: list[pd.DataFrame] = []
+        operations_df: dict[str, pd.DataFrame] = {}
 
         for detail in details:
             detail_name: str = detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"
@@ -50,9 +50,9 @@ class TableTime:
                 operations_name.append(operation.name)
                 operations_time.append(operation.calc(detail.count))
 
-            operations_df.append(pd.DataFrame({"Operation": operations_name, "Time": operations_time}))
+            df = pd.DataFrame({"Operation": operations_name, "Time": operations_time})
 
-            if self.name == "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 
+            if detail_name == "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
                 map_values: dict[str, str] = {
                                                 "Зачистная": "Слесарная",
                                                 "Зачистная / снять усиление": "Слесарная",
@@ -63,6 +63,8 @@ class TableTime:
                                                 "Слесарная / зачистить торец после лазер.резки, притупить кромки": "Слесарная"
                                                 }
 
-                operations_df[-1] = operations_df[-1].rename(map_values).groupby('Operation').sum().reset_index()
+                df = df.rename(map_values)
 
-        return pd.concat(operations_df).groupby(by="Operation").sum().reset_index()
+            operations_df[detail_name] = df.groupby('Operation').sum().reset_index()
+
+        return operations_df
