@@ -82,6 +82,11 @@ def start_calc() -> None:
     else:
         num_calc = 0
 
+    for i in range(num_calc, 100000):
+        if not os.path.exists(f'./data/results/{i}'):
+            num_calc = i
+            break
+
     calcs_list.append(num_calc)
 
     st.write(f"Номер рассчёта {num_calc}")
