@@ -3,6 +3,13 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+from streamlit_javascript import st_javascript
+
+st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
+if st_theme == "dark":
+    base_color: str = "black"
+else:
+    base_color: str = "white"
 
 st.markdown("Результаты расчётов")
 st.sidebar.markdown("Результаты рассчётов")
@@ -16,7 +23,7 @@ def get_avaliable_calcs() -> list[str]:
     return [file for file in os.listdir(path) if not file.endswith('.json')]
 
 def color_survived(val):
-    color = "white"
+    color = base_color
     if val == 'Да':
         color = 'green'
     if val == 'Нет':
