@@ -19,7 +19,7 @@ def run_calcs(request_id: int,
     input_details = input_details[["Изделие", "Количество", "Рассчитать"]]
     input_details = input_details.loc[input_details["Рассчитать"]]
 
-    details: list[Detail] = [Detail(name=row["Деталь"], count=int(row["Количество"])) \
+    details: list[Detail] = [Detail(name=row["Изделие"], count=int(row["Количество"])) \
                              for _, row in input_details.iterrows()]
 
     standart_operations_times: dict[str, pd.DataFrame] = table_time.calc(details=details)
