@@ -13,8 +13,8 @@ from middleware.run_calcs import run_calcs
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-st.markdown("Настройка рассчёта")
-st.sidebar.markdown("Настройка рассчёта")
+st.markdown("Загрузка данных")
+st.sidebar.markdown("В этом разделе определяются параметры рассчёта, такие как: изделия, которые следует произвести, их количество, временной промежуток рассчёта.")
 
 if "edit_table" not in st.session_state:
     st.session_state.edit_table = 0
@@ -31,7 +31,7 @@ def get_available_details() -> pd.DataFrame:
     files: list[str] = [replaces(file) for file in os.listdir(path) if  \
                          (file.endswith((".xlsx", ".xls"))) and file.startswith("Тех_карта")]
 
-    data: pd.DataFrame = pd.DataFrame({"Деталь": files})
+    data: pd.DataFrame = pd.DataFrame({"Изделие": files})
     data["Количество"] = 1
     data["Рассчитать"] = True
     #logger.info(st.session_state.edit_table)
