@@ -16,7 +16,7 @@ def get_avaliable_calcs() -> list[str]:
     return [file for file in os.listdir(path) if not file.endswith('.json')]
 
 def color_survived(val):
-    color = "default"
+    color = "white"
     if val == 'Да':
         color = 'green'
     if val == 'Нет':
@@ -36,4 +36,5 @@ with st.container():
     """## Количество нормо-часов операций"""
     st.dataframe(data=operations.drop(columns=["Unnamed: 0"]), key=st.session_state.calc_result_df)
     """## Смены"""
-    st.dataframe(data=shifts.drop(columns=["Unnamed: 0"]).style.applymap(color_survived), key=st.session_state.calc_result_df)
+    st.dataframe(data=shifts.drop(columns=["Unnamed: 0"]).style.applymap(color_survived),
+                 key=st.session_state.calc_result_df)
