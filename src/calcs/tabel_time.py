@@ -53,9 +53,9 @@ class TableTime:
             df = pd.DataFrame({"Operation": operations_name, "Time": operations_time})
 
             if detail_name == "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
-                map_values: dict[str, str] = {
+                map_values: dict[str, str] = {  "4285 Пило- отрезная": "Слесарная",
                                                 "Зачистная": "Слесарная",
-                                                "Зачистная / снять усиление": "Слесарная",
+                                                "Зачистная / снять усиление св. шва": "Слесарная",
                                                 "Лазерная резка трубы": "Вальцовочная",
                                                 "Ленточношлифовальная": "Слесарная",
                                                 "Сварка вольфрамом в среде защитного газа (TIG)": "Сварка полуавтоматом в среде защитного газа (MIG)",
@@ -63,7 +63,7 @@ class TableTime:
                                                 "Слесарная / зачистить торец после лазер.резки, притупить кромки": "Слесарная"
                                                 }
 
-                df = df.rename(map_values)
+                df = df.replace(map_values)
 
             operations_df[detail_name] = df.groupby('Operation').sum().reset_index()
 

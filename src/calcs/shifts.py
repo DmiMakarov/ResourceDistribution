@@ -96,7 +96,7 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx":
                                  {"Слесарь по сборке|Упаковочная"},
                                  "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx":
-                                 {"Слесарь по сборке|Упаковочная"},
+                                 {},
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
                                  {"Слесарь по сборке|Упаковочная"}
                                 }
@@ -110,11 +110,10 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  },
                                  "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx":
                                  {
-                                    "Слесарь по сборке|Сборочная": 0
                                  },
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
                                  {
-                                    "Слесарь по сборке|Слесарная": 0,
+                                    "Слесарь по сборке|Сборочная": 0,
                                     "Эл. Сварщик и п/авт машин|Сварка полуавтоматом в среде защитного газа (MIG)": 0
                                  }
                                  },
@@ -335,14 +334,14 @@ class ShiftOperation:
         day_available: bool = not is_night
         night_available: bool = is_night
 
-        for dt, is_day in self.fill_dates:
+        for dt, is_night_ in self.fill_dates:
             if dt == date:
-                if is_day:
-                    day_available = False
-                else:
+                if is_night_:
                     night_available = False
+                else:
+                    day_available = False
 
-        if not day_available and night_available:
+        if not day_available and not night_available:
             return 0, False
 
 
@@ -363,6 +362,7 @@ class ShiftOperation:
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
+        self.fill_dates = []
 #что мне теперь надо для вычислений
 #1. Составить конфигурации всех деталей
 #2. Заполнить detail_per_hour (идеально по конфигу, но пофиг, пока так сделаем) - done
@@ -426,6 +426,10 @@ class ShiftCalc:
             current_date: datetime.date =  copy.copy(date_range[0])
             is_night: bool = False
 
+            self.clear()
+            self.__fill_operations(operations=operations, input_count=input_count, details=details_to_compute)
+            self.__fill_start(details_count=input_count)
+
             while not is_full:
 
                 for detail in details_to_compute:
@@ -435,14 +439,14 @@ class ShiftCalc:
 
                     prev_empty: bool = True
 
-                    for i, operation in enumerate(self.shift[detail]):
-                        count, prev_empty = operation.next(date=current_date, is_night=False, prev_empty=prev_empty, detail_name=detail)
+                    for i, operation in enumerate(self.shifts[detail]):
+                        count, prev_empty = operation.next(date=current_date, is_night=is_night, prev_empty=prev_empty, detail_name=detail)
                         next_names: set[str] = operation.next_operations[detail]
 
                         for op_name in next_names:
-                            for j in range(i + 1, len(self.shift[detail])):
-                                if self.shifts[j].operation_name == op_name:
-                                    self.shifts[j].prev_operations[detail][operation.operation_name] += count
+                            for j in range(i + 1, len(self.shifts[detail])):
+                                if self.shifts[detail][j].operation_name == op_name:
+                                    self.shifts[detail][j].prev_operations[detail][operation.operation_name] += count
 
                     if prev_empty:
                         is_fill[detail] = True
@@ -452,9 +456,9 @@ class ShiftCalc:
 
                 is_night = not is_night
 
-                is_full: bool = True
+                is_full = True
                 for _, val in is_fill.items():
-                    is_full = is_full and is_fill
+                    is_full = is_full and val
 
         answ: pd.DataFrame = self.__prepare_answ(details=details_to_compute)
 
@@ -580,7 +584,7 @@ rolling = ShiftOperation.from_dict(operation_name="Оператор станок
 
 details_to_ops: dict[str, list] = {
     "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly, pack],
-    "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly, pack],
+    "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly],
     "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": [plumb, laser, cut, fold, rolling, welding, assembly, pack]
 }
 

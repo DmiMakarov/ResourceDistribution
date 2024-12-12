@@ -3,7 +3,8 @@ import logging
 
 import pandas as pd
 
-from calcs.calculate_shifts import calculate_shifts
+#from calcs.calculate_shifts import calculate_shifts
+from calcs.shifts import shift_calc
 from calcs.detail import Detail
 from calcs.tabel_time import TableTime
 
@@ -21,11 +22,16 @@ def run_calcs(request_id: int,
     details: list[Detail] = [Detail(name=row["Деталь"], count=int(row["Количество"])) \
                              for _, row in input_details.iterrows()]
 
-    standart_operations_times: pd.DataFrame = table_time.calc(details=details)
-    config: pd.DataFrame = pd.read_excel('./data/StaffConfig.xlsx')
-    shifts: pd.DataFrame = calculate_shifts(operation_df=standart_operations_times,
-                                            config=config,
-                                            max_days=(date_range[1] - date_range[0]).days)
+    standart_operations_times: dict[str, pd.DataFrame] = table_time.calc(details=details)
+    #config: pd.DataFrame = pd.read_excel('./data/StaffConfig.xlsx')
+    #shifts: pd.DataFrame = calculate_shifts(operation_df=standart_operations_times,
+    #                                        config=config,
+    #                                        max_days=(date_range[1] - date_range[0]).days)
+    input_count: dict[str, int] = {}
+    for detail in details:
+        input_count[detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"] = detail.count
 
-    standart_operations_times.to_excel(f"./data/results/{request_id}/operations.xlsx")
+    shifts = shift_calc.calc(operations=standart_operations_times, input_count=input_count, date_range=date_range)
+    df_operations_times: pd.DataFrame = pd.concat([value for _, value in standart_operations_times.items()])
+    df_operations_times.to_excel(f"./data/results/{request_id}/operations.xlsx")
     shifts.to_excel(f"./data/results/{request_id}/shifts.xlsx")
