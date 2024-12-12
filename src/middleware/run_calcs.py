@@ -16,7 +16,7 @@ def run_calcs(request_id: int,
     """Calculate request and write answer to folder"""
     table_time: TableTime = TableTime()
 
-    input_details = input_details[["Деталь", "Количество", "Рассчитать"]]
+    input_details = input_details[["Изделие", "Количество", "Рассчитать"]]
     input_details = input_details.loc[input_details["Рассчитать"]]
 
     details: list[Detail] = [Detail(name=row["Деталь"], count=int(row["Количество"])) \
