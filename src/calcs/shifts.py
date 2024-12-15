@@ -6,6 +6,7 @@ Main idea is to accumulate info about previous operation during one shift
 import copy
 import datetime
 
+import numpy as np
 import pandas as pd
 #count: int = params["people"]
 #prev_operations: dict[str, dict[str, int]] = params["prev_operations"]
@@ -291,7 +292,7 @@ class ShiftOperation:
         self.next_operations: dict[str, set[str]] = next_operations
 
         #Day - false, Night - True
-        self.fill_dates: list[tuple[datetime.date, bool]] = []
+        self.fill_dates: list[tuple[datetime.date, bool, int]] = []
 
     @classmethod
     def from_dict(cls,
@@ -328,13 +329,33 @@ class ShiftOperation:
 
         min_available_details: int = min([value for _, value in  self.prev_operations[detail_name].items()])
 
-        if (min_available_details / self.detail_per_hour[detail_name] <= 12 ) and not prev_empty:
-            return 0, False
+        if not prev_empty:
+
+            if min_available_details / self.detail_per_hour[detail_name] < 11:
+                return 0, False
+
+            is_enough: bool = True
+
+            for op_name in self.prev_operations[detail_name]:
+                if op_name == "Start":
+                    prev_empty = True
+                    break
+                # если требуемое количество деталей для 12 делается меньше,
+                # чем за 6 часов, то надо запускать
+                #единственное, надо как-то подвязаться к количеству деталей
+
+                if self.detail_per_hour[detail_name] * 11 > NAME_TO_OP[op_name].detail_per_hour[detail_name] * 6 \
+                   and self.prev_operations[detail_name][op_name] <= NAME_TO_OP[op_name].detail_per_hour[detail_name] * 11:
+                    is_enough = False
+                    break
+
+            if not is_enough:
+                return 0, False
 
         day_available: bool = not is_night
         night_available: bool = is_night
 
-        for dt, is_night_ in self.fill_dates:
+        for dt, is_night_, _ in self.fill_dates:
             if dt == date:
                 if is_night_:
                     night_available = False
@@ -344,11 +365,11 @@ class ShiftOperation:
         if not day_available and not night_available:
             return 0, False
 
-
-        details_in_this_date: int = int(min(self.detail_per_hour[detail_name] * 12 * (day_available + night_available),
+        details_in_this_date: int = int(min(self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
                                             min_available_details))
-        if min_available_details > 0:
-            self.fill_dates.append((date, is_night))
+        if details_in_this_date > 0:
+            self.fill_dates.append((date, is_night,
+                                    details_in_this_date / self.detail_per_hour[detail_name]))
 
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
         for op in self.prev_operations[detail_name]:
@@ -363,6 +384,7 @@ class ShiftOperation:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
         self.fill_dates = []
+        self.detail_per_hour = {}
 #что мне теперь надо для вычислений
 #1. Составить конфигурации всех деталей
 #2. Заполнить detail_per_hour (идеально по конфигу, но пофиг, пока так сделаем) - done
@@ -426,6 +448,9 @@ class ShiftCalc:
             current_date: datetime.date =  copy.copy(date_range[0])
             is_night: bool = False
 
+            for detail in details_to_compute:
+                is_fill[detail] = False
+
             self.clear()
             self.__fill_operations(operations=operations, input_count=input_count, details=details_to_compute)
             self.__fill_start(details_count=input_count)
@@ -474,8 +499,12 @@ class ShiftCalc:
 
         for detail in details:
             for shift_operation in self.shifts[detail]:
-                shift_operation.detail_per_hour[detail] = input_count[detail] /  \
-                                                  operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
+                if shift_operation.detail_per_hour.get(detail, None) is None:
+                    shift_operation.detail_per_hour[detail] = input_count[detail] /  \
+                                                               operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
+                else:
+                    shift_operation.detail_per_hour[detail] += input_count[detail] /  \
+                                                               operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
 
     def __fill_start(self,
                      details_count: dict[str, int]) -> None:
@@ -486,7 +515,7 @@ class ShiftCalc:
             for start_op in start_ops_:
                 for op in self.shifts[detail]:
                     if op.operation_name == start_op:
-                        op.prev_operations[detail]["Start"] = details_count[detail]
+                        op.prev_operations[detail]["Start"] += details_count[detail]
 
                         break
 
@@ -510,7 +539,7 @@ class ShiftCalc:
 
                     operations_dates[operation.operation_name] = operation.fill_dates
 
-                    for date, _ in operation.fill_dates:
+                    for date, _, _ in operation.fill_dates:
                         min_date = min(date, min_date)
                         max_date = max(date, max_date)
 
@@ -519,23 +548,25 @@ class ShiftCalc:
         columns: list = [[date + " День", date + " Ночь"] \
                           for date in base_range]
         columns = [item for row in columns for item in row]
-        dates = pd.DataFrame(columns=columns)
-        merged = pd.concat([staff_table, dates]).fillna("Нет")
+        dates = pd.DataFrame(columns=columns, dtype=float)
+        merged = pd.concat([staff_table, dates]).fillna(0.0)
 
         new_op_dates = {}
 
         for val, dates in operations_dates.items():
             tmp = []
-            for date, is_night in dates:
+            for date, is_night, count in dates:
                 if is_night:
-                    tmp.append(date.strftime("%d-%m-%Y") + " Ночь")
+                    tmp.append((date.strftime("%d-%m-%Y") + " Ночь", count))
                 else:
-                    tmp.append(date.strftime("%d-%m-%Y") + " День")
+                    tmp.append((date.strftime("%d-%m-%Y") + " День", count))
             new_op_dates[val] = tmp
 
         for val, dates in new_op_dates.items():
+            dates_ = [date[0] for date in dates]
+            count = [count[1] for count in dates]
             merged.loc[(merged["Сотрудник"] == val.split("|")[0]) &
-                   (merged["Операция"] == val.split("|")[1]), dates] = "Да"
+                   (merged["Операция"] == val.split("|")[1]), dates_] = count
 
         return merged
 
@@ -552,7 +583,7 @@ class ShiftCalc:
 #podshipnik =  [ Слесарь по сборке|Ленточно-отрезная, Станочник широкого профиля|Токарная,
 #                Станочник широкого профиля|Вертикально-фрезерная, Оператор окрасочно-сушильной линии и агрегата|Окрашивание порошком,
 #                Слесарь по сборке|Сборочная, Слесарь по сборке|Упаковочная
-#]
+#
 
 # kormushka = [Слесарь по сборке|Слесарная, Оператор станок с пу/лазер|Лазерная резка листа, Слесарь по сборке|Ленточно-отрезная,
 #              Оператор станок с пу/гибка|Листогибочная, Оператор станок с пу/гибка|Вальцовочная,
@@ -581,7 +612,20 @@ plumb = ShiftOperation.from_dict(operation_name="Слесарь по сборк�
                                  params=MAP_OPERATIONS["Слесарь по сборке|Слесарная"])
 rolling = ShiftOperation.from_dict(operation_name="Оператор станок с пу/гибка|Вальцовочная",
                                  params=MAP_OPERATIONS["Оператор станок с пу/гибка|Вальцовочная"])
-
+NAME_TO_OP: dict[str, ShiftOperation] = \
+{
+    "Оператор станок с пу/лазер|Лазерная резка листа": laser,
+    "Оператор станок с пу/гибка|Листогибочная": fold,
+    "Эл. Сварщик и п/авт машин|Сварка полуавтоматом в среде защитного газа (MIG)": welding,
+    "Оператор окрасочно-сушильной линии и агрегата|Окрашивание порошком": color,
+    "Слесарь по сборке|Сборочная": assembly,
+    "Слесарь по сборке|Упаковочная": pack,
+    "Слесарь по сборке|Ленточно-отрезная": cut,
+    "Станочник широкого профиля|Токарная": lathe,
+    "Станочник широкого профиля|Вертикально-фрезерная": milling,
+    "Слесарь по сборке|Слесарная": plumb,
+    "Оператор станок с пу/гибка|Вальцовочная": rolling
+}
 details_to_ops: dict[str, list] = {
     "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly, pack],
     "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly],

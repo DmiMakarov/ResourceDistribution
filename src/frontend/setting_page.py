@@ -14,7 +14,7 @@ from middleware.run_calcs import run_calcs
 logger: logging.Logger = logging.getLogger(__name__)
 
 st.markdown("Загрузка данных")
-st.sidebar.markdown("В этом разделе определяются параметры рассчёта, такие как: изделия, которые следует произвести, их количество, временной промежуток рассчёта.")
+st.sidebar.markdown("В этом разделе определяются параметры расчёта, такие как: изделия, которые следует произвести, их количество, временной промежуток расчёта.")
 
 if "edit_table" not in st.session_state:
     st.session_state.edit_table = 0
@@ -33,7 +33,7 @@ def get_available_details() -> pd.DataFrame:
 
     data: pd.DataFrame = pd.DataFrame({"Изделие": files})
     data["Количество"] = 1
-    data["Рассчитать"] = True
+    data["расчитать"] = True
     #logger.info(st.session_state.edit_table)
 
     return data
@@ -68,14 +68,18 @@ with st.container():
             ).today()
 
     dates_range: tuple[datetime.date, datetime.date] = st.date_input(
-                                                                    "Выберете интервал рассчёта",
+                                                                    "Выберете интервал расчёта",
                                                                     (today, today + relativedelta(months=1)),
-                                                                     format="MM.DD.YYYY",
+                                                                     format="DD.MM.YYYY",
                                                                     )
 
 def start_calc() -> None:
+
     with Path("./data/results/last.json").open("r") as file:
         calcs_list: list[int] = json.loads(file.read())
+
+    with Path("./data/results/dates.json").open("r") as file:
+        data_map: dict[int, str] = json.loads(file.read())
 
     if len(calcs_list) > 0:
         num_calc: int = max(calcs_list) + 1
@@ -88,8 +92,8 @@ def start_calc() -> None:
             break
 
     calcs_list.append(num_calc)
-
-    st.write(f"Номер рассчёта {num_calc}")
+    data_map[num_calc] = f"{dates_range[0].strftime('%d.%m.%Y')} - {dates_range[1].strftime('%d.%m.%Y')}"
+    st.write(f"Номер расчёта {num_calc}")
 
     Path.mkdir(f'./data/results/{num_calc}')
 
@@ -98,6 +102,10 @@ def start_calc() -> None:
     with Path("./data/results/last.json").open("w") as file:
         json.dump(calcs_list, file)
 
-    st.session_state.calc_result += 1
+    with Path("./data/results/dates.json").open("w") as file:
+        json.dump(data_map, file)
 
-st.button(label="Начать рассчёт", on_click=start_calc)
+    st.session_state.calc_result += 1
+    #st.switch_page("./frontend/result_page.py")
+
+st.button(label="Начать расчёт", on_click=start_calc)

@@ -5,6 +5,8 @@ import numpy as np
 from io import BytesIO
 import streamlit as st
 from streamlit_javascript import st_javascript
+from pathlib import Path
+import json
 
 st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
 if st_theme == "dark":
@@ -34,15 +36,38 @@ if "calc_result" not in st.session_state:
 def get_avaliable_calcs() -> list[str]:
     path: str = "./data/results"
 
-    return [file for file in os.listdir(path) if not file.endswith('.json')]
+    return sorted([int(file) for file in os.listdir(path) if not file.endswith('.json')], reverse=True)
 
 def color_survived(val):
     color = base_color
-    if val == 'Да':
-        color = 'green'
-    if val == 'Нет':
-        color = 'red'
+
+    if isinstance(val, float) | isinstance(val , int):
+        if val == 0.0:
+            color = 'red'
+        else:
+            color = 'green'
+
     return f'background-color: {color}'
+
+def delete_calc():
+    path: str = "./data/results"
+    files: list[str] = [file for file in os.listdir(path) if not file.endswith('.json')]
+
+    for file in files:
+        os.remove(path=f"{path}/{file}/input.xlsx")
+        os.remove(path=f"{path}/{file}/operations.xlsx")
+        os.remove(path=f"{path}/{file}/shifts.xlsx")
+        Path.rmdir(f"{path}/{file}")
+
+    with Path("./data/results/dates.json").open("w") as file:
+        json.dump({}, file)
+
+    with Path("./data/results/last.json").open("w") as file:
+        json.dump([], file)
+
+with st.container():
+    st.button(label="Очистить расчёты", on_click=delete_calc)
+
 
 with st.container():
     st.session_state.calc_result_df = st.selectbox(label="Номер рассчёта",
@@ -50,18 +75,27 @@ with st.container():
                                                    key=st.session_state.calc_result)
 
 with st.container():
-    operations: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx").drop(columns=["Unnamed: 0"])
-    shifts: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx").drop(columns=["Unnamed: 0"]).style.applymap(color_survived)
+    if st.session_state.calc_result_df is not None:
+        input: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx").drop(columns=["Unnamed: 0"])
+        operations: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx").drop(columns=["Unnamed: 0"])
+        shifts: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx").drop(columns=["Unnamed: 0"])
 
-    operations['Time'] = np.round(operations['Time'], 1)
-    """## Количество нормо-часов операций"""
-    st.dataframe(data=operations, key=st.session_state.calc_result_df)
-    st.download_button(label='Скачать',
-                                data=to_excel(operations) ,
-                                file_name= 'operations.xlsx')
-    """## Смены"""
-    st.dataframe(data=shifts,
-                 key=st.session_state.calc_result_df)
-    st.download_button(label='Скачать',
-                       data=to_excel(shifts) ,
-                       file_name= 'shiftss.xlsx')
+        with Path("./data/results/dates.json").open("r") as file:
+            data_map: dict[int, str] = json.loads(file.read())
+
+        operations['Time'] = np.round(operations['Time'], 1)
+        """## Конфигурация расчёта"""
+        st.write(data_map[str(st.session_state.calc_result_df)])
+        st.dataframe(data=input, key=st.session_state.calc_result_df)
+
+        """## Количество нормо-часов операций"""
+        st.dataframe(data=operations, key=st.session_state.calc_result_df)
+        st.download_button(label='Скачать',
+                                    data=to_excel(operations) ,
+                                    file_name= 'operations.xlsx')
+        """## Смены"""
+        st.dataframe(data=shifts.style.applymap(color_survived).format(precision=1),
+                     key=st.session_state.calc_result_df)
+        st.download_button(label='Скачать',
+                           data=to_excel(shifts) ,
+                           file_name= 'shiftss.xlsx')

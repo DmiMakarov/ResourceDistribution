@@ -16,8 +16,9 @@ def run_calcs(request_id: int,
     """Calculate request and write answer to folder"""
     table_time: TableTime = TableTime()
 
-    input_details = input_details[["Изделие", "Количество", "Рассчитать"]]
-    input_details = input_details.loc[input_details["Рассчитать"]]
+    input_details = input_details[["Изделие", "Количество", "расчитать"]]
+    input_details = input_details.loc[input_details["расчитать"]]
+    input_details[["Изделие", "Количество"]].to_excel(f"./data/results/{request_id}/input.xlsx")
 
     details: list[Detail] = [Detail(name=row["Изделие"], count=int(row["Количество"])) \
                              for _, row in input_details.iterrows()]
@@ -32,6 +33,6 @@ def run_calcs(request_id: int,
         input_count[detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"] = detail.count
 
     shifts = shift_calc.calc(operations=standart_operations_times, input_count=input_count, date_range=date_range)
-    df_operations_times: pd.DataFrame = pd.concat([value for _, value in standart_operations_times.items()])
+    df_operations_times: pd.DataFrame = pd.concat([value for _, value in standart_operations_times.items()]).groupby("Operation").sum().reset_index()
     df_operations_times.to_excel(f"./data/results/{request_id}/operations.xlsx")
     shifts.to_excel(f"./data/results/{request_id}/shifts.xlsx")
