@@ -8,6 +8,9 @@ import datetime
 
 import numpy as np
 import pandas as pd
+
+from dataclasses import dataclass
+from enum import Enum
 #count: int = params["people"]
 #prev_operations: dict[str, dict[str, int]] = params["prev_operations"]
 #next_operations:dict[str, set[str]]
@@ -274,6 +277,24 @@ START_OPS: dict[str, list[str]] = {
                                                              "Слесарь по сборке|Слесарная"]
 }
 
+class OrderType(Enum):
+    """
+    default - сначала посчитать только с дневными, потом с дневными и ночными
+    only_day - только дневные без ограничения конечной даты
+    with_night - дневные и ночные смены без ограничения конечных дат
+    """
+    DEFAULT=0
+    ONLY_DAY=1
+    WITH_NIGHT=2
+
+@dataclass
+class Order:
+
+    operations: dict[str, pd.DataFrame]
+    details_count: dict[str, int]
+    date_range: tuple[datetime.date, datetime.date | None]
+    
+
 class ShiftOperation:
 
     def __init__(self,
@@ -396,8 +417,21 @@ class ShiftCalc:
                  shifts: dict[str, list[ShiftOperation]]) -> None:
         self.shifts: dict[str, list[ShiftOperation]] = shifts
 
+    def __single_calc(self,
+                      order: Order,
+                      order_type: OrderType,
+                      details_to_compute: list[str]) -> tuple[pd.DataFrame, bool]:
+        """
+        А теперь вопрос - если мы храним текущие данные, то как делать, если не помещается?
+        быстрое решение - сделать tmp_fill_date 
+        """
+        is_fill: dict[str, bool] = Х
+
+        for detail in details_to_compute:
+            is_fill[detail] = False
+
     #строго говоря, тут всё надо распихать по струкутрам - operations, configs
-    def calc(self,
+    def calc_old(self,
              operations: dict[str, pd.DataFrame],
              input_count: dict[str, int],
              date_range: tuple[datetime.date, datetime.date]) -> pd.DataFrame:
