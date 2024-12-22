@@ -36,7 +36,7 @@ def get_available_details() -> pd.DataFrame:
 
     data: pd.DataFrame = pd.DataFrame({"Изделие": files})
     data["Количество"] = 1
-    data["расчитать"] = True
+    data["Расчитать"] = True
     #logger.info(st.session_state.edit_table)
 
     return data
@@ -65,7 +65,7 @@ def update_num_orders():
 with st.container():
     st.session_state.num_orders = st.number_input("Введите количество заказов", value=1, min_value=1)
     
-    st.button(label="Применить", on_click=update_num_orders)
+    #st.button(label="Применить", on_click=update_num_orders)
 
 def start_calc() -> None:
 
@@ -121,14 +121,16 @@ with st.container(key=st.session_state.edit_table):
     edited_df: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]] = {}
     
     for i in range(st.session_state.num_orders):
-        name: str = st.text_input("Имя заказа")
+        name: str = st.text_input("Имя заказа", key=f"name_{st.session_state.edit_table}_{i}")
 
-        edited_df_ = st.data_editor(details, hide_index=True)
+        edited_df_ = st.data_editor(details, hide_index=True, 
+                                    key=f"input_df_{st.session_state.edit_table}_{i}")
 
         option = st.selectbox(
                               "Тип расчёта",
                               ("Планирование", "Обратное планирование (день)", "Обратное планирование (день + ночь)"),
-                              index=None
+                              index=None,
+                              key=f"sb_{st.session_state.edit_table}_{i}"
                              )
 
         if option == "Планирование":
@@ -136,12 +138,17 @@ with st.container(key=st.session_state.edit_table):
                                                                             "Выберете интервал расчёта",
                                                                             (today, today + relativedelta(months=1)),
                                                                              format="DD.MM.YYYY",
+                                                                             key=f"dr_{st.session_state.edit_table}_{i}"
                                                                             )
         else:
-            date_calc: datetime.date = st.date_input("Дата старта", today)
+            date_calc: datetime.date = st.date_input("Дата старта", 
+                                                     today,
+                                                     key=f"dr_{st.session_state.edit_table}_{i}")
             dates_range = [date_calc, None]
         
         edited_df[name] = (edited_df_, option, dates_range)
+
+        st.write('-------------------')
     
 
 #with st.container():

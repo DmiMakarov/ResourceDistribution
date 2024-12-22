@@ -76,26 +76,55 @@ with st.container():
 
 with st.container():
     if st.session_state.calc_result_df is not None:
-        input: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx").drop(columns=["Unnamed: 0"])
-        operations: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx").drop(columns=["Unnamed: 0"])
-        shifts: pd.DataFrame = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx").drop(columns=["Unnamed: 0"])
+        input_: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx", sheet_name=None)
+        operations: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx", sheet_name=None)
+        shifts: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx", sheet_name=None)
 
         with Path("./data/results/dates.json").open("r") as file:
-            data_map: dict[int, str] = json.loads(file.read())
+            data_map: dict[int, dict[str, str]] = json.loads(file.read())
 
-        operations['Time'] = np.round(operations['Time'], 1)
-        """## Конфигурация расчёта"""
-        st.write(data_map[str(st.session_state.calc_result_df)])
-        st.dataframe(data=input, key=st.session_state.calc_result_df)
+        """# Конфигурация расчёта"""
 
-        """## Количество нормо-часов операций"""
-        st.dataframe(data=operations, key=st.session_state.calc_result_df)
+        for order_name in input_:
+
+            if order_name == "total":
+                continue
+
+            st.write(f"## Конфигурация заказа {order_name}")
+            operations[order_name]['Time'] = np.round(operations[order_name]['Time'], 1)
+            
+            st.write(data_map[str(st.session_state.calc_result_df)][order_name])
+            st.dataframe(data=input_[order_name], key=st.session_state.calc_result_df)
+
+            st.write(f"## Количество нормо-часов операций для заказа {order_name}")
+            st.dataframe(data=operations[order_name], key=st.session_state.calc_result_df)
+            st.download_button(label='Скачать',
+                               data=to_excel(operations[order_name]) ,
+                               file_name= 'operations.xlsx',
+                               key=f"operation_{order_name}")
+            st.write(f"## Смены для заказа {order_name}")
+            st.dataframe(data=shifts[order_name].style.applymap(color_survived).format(precision=1),
+                         key=st.session_state.calc_result_df)
+            st.download_button(label='Скачать',
+                               data=to_excel(shifts[order_name]) ,
+                               file_name= 'shiftss.xlsx',
+                               key=f"shift_{order_name}")
+
+        st.write(f"## Конфигурация заказа")
+        operations["total"]['Time'] = np.round(operations[order_name]['Time'], 1)
+        st.dataframe(data=input_["total"], key=st.session_state.calc_result_df)
+        
+        st.write("## Суммарное количество нормо-часов операций")
+        st.dataframe(data=operations["total"], key=st.session_state.calc_result_df)
         st.download_button(label='Скачать',
-                                    data=to_excel(operations) ,
-                                    file_name= 'operations.xlsx')
-        """## Смены"""
-        st.dataframe(data=shifts.style.applymap(color_survived).format(precision=1),
+                           data=to_excel(operations["total"]) ,
+                           file_name= 'operations.xlsx',
+                           key="operation_total")
+        st.write("## Итоговые смены")
+        st.dataframe(data=shifts["total"].style.applymap(color_survived).format(precision=1),
                      key=st.session_state.calc_result_df)
         st.download_button(label='Скачать',
-                           data=to_excel(shifts) ,
-                           file_name= 'shiftss.xlsx')
+                           data=to_excel(shifts["total"]) ,
+                           file_name= 'shiftss.xlsx',
+                               key="shift_total")
+

@@ -287,6 +287,19 @@ class OrderType(Enum):
     ONLY_DAY=1
     WITH_NIGHT=2
 
+    "Планирование", "Обратное планирование (день)", "Обратное планирование (день + ночь)"
+
+    @classmethod
+    def from_str(cls, val: str):
+        if val == "Планирование":
+            return cls.DEFAULT
+        elif val == "Обратное планирование (день)":
+            return cls.ONLY_DAY
+        elif val == "Обратное планирование (день)":
+            return cls.WITH_NIGHT
+        else:
+            raise ValueError("Неизвестный тип заказов")
+
 @dataclass
 class Order:
 
@@ -321,7 +334,6 @@ class ShiftOperation:
     @classmethod
     def from_dict(cls,
                   operation_name: str,
-                  order_name: str, 
                   params: dict) -> 'ShiftOperation':
         count: int = params["people"]
         prev_operations: dict[str, dict[str, int]] = params["prev_operations"]
@@ -406,10 +418,10 @@ class ShiftOperation:
             self.tmp_fill_dates.append((date, is_night,
                                         details_in_this_date / self.detail_per_hour[detail_name]))
             
-            if order_name not in self.orderd_fill_dates:
-                self.orderd_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
+            if order_name not in self.orders_fill_dates:
+                self.orders_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
             else:
-                self.orderd_fill_dates[order_name].append((date, is_night, details_in_this_date / self.detail_per_hour[detail_name]))
+                self.orders_fill_dates[order_name].append((date, is_night, details_in_this_date / self.detail_per_hour[detail_name]))
             
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
         for op in self.prev_operations[detail_name]:
@@ -435,11 +447,11 @@ class ShiftOperation:
 
     def clean_order(self, order_name: str) -> None:
         self.tmp_fill_dates = []
-        self.orderd_fill_dates[order_name] = {}
+        self.orders_fill_dates[order_name] = {}
 
     def approve_order(self) -> None:
-        self.fill_dates.expand(self.tmp_fill_dates)
-        self.tmp_files = []
+        self.fill_dates.extend(self.tmp_fill_dates)
+        self.tmp_fill_dates = []
 
 #что мне теперь надо для вычислений
 #1. Составить конфигурации всех деталей
@@ -483,7 +495,9 @@ class ShiftCalc:
                 prev_empty: bool = True
 
                 for i, operation in enumerate(self.shifts[detail]):
-                    count, prev_empty = operation.next(date=current_date, is_night=is_night, prev_empty=prev_empty, detail_name=detail)
+                    count, prev_empty = operation.next(date=current_date, is_night=is_night,
+                                                       prev_empty=prev_empty, detail_name=detail,
+                                                       order_name=order.order_name)
                     next_names: set[str] = operation.next_operations[detail]
 
                     for op_name in next_names:
@@ -528,29 +542,36 @@ class ShiftCalc:
                     self._clear_prev_operations()
                     self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
 
-                order_details: set = set(orders.details_count.keys())
+                self._approve_order()
+
+                order_details: set = set(order.details_count.keys())
                 details.update(order_details)
-                answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=None)
+                answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=order.order_name)
 
             answ["total"] = self.__prepare_answ(details=details, order_name=None)
+
+            self.clear()
 
             return answ
 
     def _clean_order(self,
                     order_name: str) -> None:
 
-        for operation in self.shifts:
-            operation.clean_order(order_name=order_name)
+        for detail in self.shifts:
+            for operation in self.shifts[detail]:
+                operation.clean_order(order_name=order_name)
 
     def _approve_order(self) -> None:
 
-        for operation in self.shifts:
-            operation.approve_order()
+        for detail in self.shifts:
+            for operation in self.shifts[detail]:
+                operation.approve_order()
 
     def _clear_prev_operations(self):
         
-        for operation in self.shifts: 
-            operation.clear_prev_operations()
+        for detail in self.shifts:
+            for operation in self.shifts[detail]: 
+                operation.clear_prev_operations()
 
     #строго говоря, тут всё надо распихать по струкутрам - operations, configs
     def calc_old(self,
@@ -723,7 +744,7 @@ class ShiftCalc:
             dates_ = [date[0] for date in dates]
             count = [count[1] for count in dates]
             merged.loc[(merged["Сотрудник"] == val.split("|")[0]) &
-                   (merged["Операция"] == val.split("|")[1]), dates_] = count
+                   (merged["Операция"] == val.split("|")[1]), dates_] += count
 
         return merged
 
