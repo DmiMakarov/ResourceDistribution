@@ -5,18 +5,20 @@ import pandas as pd
 
 
 #from calcs.calculate_shifts import calculate_shifts
-
-from calcs.shifts import shift_calc
-
+from calcs.shifts import shift_calc, Order, OrderType
 from calcs.detail import Detail
-
 from calcs.tabel_time import TableTime
 
 
 #logger: logging.Logger = logging.getLogger(__name__)
 
-
 def run_calcs(request_id: int,
+              input_details: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]]):
+ 
+    
+
+
+def run_calcs_old(request_id: int,
 
               input_details: pd.DataFrame,
 

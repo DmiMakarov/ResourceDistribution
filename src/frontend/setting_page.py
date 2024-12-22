@@ -19,6 +19,9 @@ st.sidebar.markdown("В этом разделе определяются пар�
 if "edit_table" not in st.session_state:
     st.session_state.edit_table = 0
 
+if "num_orders" not in st.session_state:
+    st.session_state.num_orders = 0
+
 if "calc_result" not in st.session_state:
     st.session_state.calc_result = 0
 
@@ -56,22 +59,13 @@ with st.container():
     if len(uploaded_files) > 0:
         st.session_state.edit_table = st.session_state.edit_table + 1
 
-with st.container():
-    edited_df = st.data_editor(get_available_details(),
-                               hide_index=True,
-                               key=st.session_state.edit_table)
+def update_num_orders():
+    st.session_state.edit_table = st.session_state.edit_table + 1
 
 with st.container():
-
-    today: datetime.date = datetime.datetime.now(
-            tz=datetime.timezone(datetime.timedelta(hours=3), name='МСК'),
-            ).today()
-
-    dates_range: tuple[datetime.date, datetime.date] = st.date_input(
-                                                                    "Выберете интервал расчёта",
-                                                                    (today, today + relativedelta(months=1)),
-                                                                     format="DD.MM.YYYY",
-                                                                    )
+    st.session_state.num_orders = st.number_input("Введите количество заказов", value=1, min_value=1)
+    
+    st.button(label="Применить", on_click=update_num_orders)
 
 def start_calc() -> None:
 
@@ -92,12 +86,21 @@ def start_calc() -> None:
             break
 
     calcs_list.append(num_calc)
-    data_map[num_calc] = f"{dates_range[0].strftime('%d.%m.%Y')} - {dates_range[1].strftime('%d.%m.%Y')}"
+    
+    data_map_: dict[str, str] = {}
+
+    for key, val in edited_df.items():
+        data_map_[key] = f"{val[2][0].strftime('%d.%m.%Y')}"
+        
+        if val[2][1] is not None:
+            data_map_[key] += f"- {val[2][1].strftime('%d.%m.%Y')}"
+    
+    data_map[num_calc] = data_map_
     st.write(f"Номер расчёта {num_calc}")
 
     Path.mkdir(f'./data/results/{num_calc}')
 
-    run_calcs(request_id=num_calc, input_details=edited_df, date_range=dates_range)
+    run_calcs(request_id=num_calc, input_details=edited_df)
 
     with Path("./data/results/last.json").open("w") as file:
         json.dump(calcs_list, file)
@@ -107,5 +110,58 @@ def start_calc() -> None:
 
     st.session_state.calc_result += 1
     #st.switch_page("./frontend/result_page.py")
+
+with st.container(key=st.session_state.edit_table):
+    details = get_available_details()
+
+    today: datetime.date = datetime.datetime.now(
+                                                tz=datetime.timezone(datetime.timedelta(hours=3), name='МСК'),
+                                                ).today()
+    
+    edited_df: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]] = {}
+    
+    for i in range(st.session_state.num_orders):
+        name: str = st.text_input("Имя заказа")
+
+        edited_df_ = st.data_editor(details, hide_index=True)
+
+        option = st.selectbox(
+                              "Тип расчёта",
+                              ("Планирование", "Обратное планирование (день)", "Обратное планирование (день + ночь)"),
+                              index=None
+                             )
+
+        if option == "Планирование":
+            dates_range: tuple[datetime.date, datetime.date] = st.date_input(
+                                                                            "Выберете интервал расчёта",
+                                                                            (today, today + relativedelta(months=1)),
+                                                                             format="DD.MM.YYYY",
+                                                                            )
+        else:
+            date_calc: datetime.date = st.date_input("Дата старта", today)
+            dates_range = [date_calc, None]
+        
+        edited_df[name] = (edited_df_, option, dates_range)
+    
+
+#with st.container():
+#    edited_df = st.data_editor(get_available_details(),
+#                               hide_index=True,
+#                               key=st.session_state.edit_table)
+#
+#    st.button(label="Начать расчёт", on_click=start_calc)
+#
+#with st.container():
+#
+#    today: datetime.date = datetime.datetime.now(
+#            tz=datetime.timezone(datetime.timedelta(hours=3), name='МСК'),
+#            ).today()
+#
+#    dates_range: tuple[datetime.date, datetime.date] = st.date_input(
+#                                                                    "Выберете интервал расчёта",
+#                                                                    (today, today + relativedelta(months=1)),
+#                                                                     format="DD.MM.YYYY",
+#                                                                    )
+#
 
 st.button(label="Начать расчёт", on_click=start_calc)
