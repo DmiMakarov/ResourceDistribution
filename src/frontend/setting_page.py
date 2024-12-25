@@ -75,6 +75,9 @@ def start_calc() -> None:
     with Path("./data/results/dates.json").open("r") as file:
         data_map: dict[int, str] = json.loads(file.read())
 
+    with Path("./data/results/orders.json").open("r") as file:
+        orders: dict[int, list[str]] = json.loads(file.read())
+
     if len(calcs_list) > 0:
         num_calc: int = max(calcs_list) + 1
     else:
@@ -88,13 +91,18 @@ def start_calc() -> None:
     calcs_list.append(num_calc)
     
     data_map_: dict[str, str] = {}
+    orders[num_calc] = ["Итог"]
 
     for key, val in edited_df.items():
         data_map_[key] = f"{val[2][0].strftime('%d.%m.%Y')}"
         
         if val[2][1] is not None:
             data_map_[key] += f"- {val[2][1].strftime('%d.%m.%Y')}"
-    
+        
+        data_map_[key] += f"<br />Тип расчёта: {val[1]}<br />Приоритет заказа: {val[3]}"
+        orders[num_calc].append(key)
+
+
     data_map[num_calc] = data_map_
     st.write(f"Номер расчёта {num_calc}")
 
@@ -108,6 +116,9 @@ def start_calc() -> None:
     with Path("./data/results/dates.json").open("w") as file:
         json.dump(data_map, file)
 
+    with Path("./data/results/orders.json").open("w") as file:
+        json.dump(orders, file)
+
     st.session_state.calc_result += 1
     #st.switch_page("./frontend/result_page.py")
 
@@ -118,10 +129,12 @@ with st.container(key=st.session_state.edit_table):
                                                 tz=datetime.timezone(datetime.timedelta(hours=3), name='МСК'),
                                                 ).today()
     
-    edited_df: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]] = {}
+    edited_df: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date], int]] = {}
     
     for i in range(st.session_state.num_orders):
         name: str = st.text_input("Имя заказа", key=f"name_{st.session_state.edit_table}_{i}")
+
+        priority: int = st.number_input("Введите приоритет заказа", value=i + 1, min_value=1)
 
         edited_df_ = st.data_editor(details, hide_index=True, 
                                     key=f"input_df_{st.session_state.edit_table}_{i}")
@@ -146,7 +159,7 @@ with st.container(key=st.session_state.edit_table):
                                                      key=f"dr_{st.session_state.edit_table}_{i}")
             dates_range = [date_calc, None]
         
-        edited_df[name] = (edited_df_, option, dates_range)
+        edited_df[name] = (edited_df_, option, dates_range, priority)
 
         st.write('-------------------')
     

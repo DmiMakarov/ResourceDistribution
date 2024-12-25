@@ -16,11 +16,13 @@ def run_calcs(request_id: int,
               input_details: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]]) -> None:
  
     table_time: TableTime = TableTime()
-    orders: list[Order] = []
+    orders: list[tuple[Order, int]] = []
     orders_type: list[OrderType] = []
 
     input_to_write: dict[str, pd.DataFrame] = {}
     operations_to_write: dict[str, pd.DataFrame] = {}
+
+    details_to_details: dict[str ,str] = {}
 
     for order_name, vals in input_details.items():
         input_to_write[order_name] = vals[0][["Изделие", "Количество", "Расчитать"]]
@@ -29,32 +31,46 @@ def run_calcs(request_id: int,
         details: list[Detail] = [Detail(name=row["Изделие"], count=int(row["Количество"])) \
                                  for _, row in input_to_write[order_name].iterrows()]
 
+
+
         tmp_operations: dict[str, pd.DataFrame] = table_time.calc(details=details)
 
         input_count: dict[str, int] = {}
         for detail in details:
-            input_count[detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"] = detail.count
+            after: str = detail.name.replace("_", "").replace(".", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "") + ".xlsx"
+            input_count[after] = detail.count
 
-        orders.append(Order(order_name=order_name, operations=tmp_operations, details_count=input_count, date_range=vals[2]))
+            if after not in details_to_details:
+                details_to_details[after] = detail.name.replace("_", " ")
+
+        orders.append((Order(order_name=order_name, operations=tmp_operations, details_count=input_count, date_range=vals[2]), vals[3]))
         orders_type.append(OrderType.from_str(vals[1]))
 
         operations_to_write[order_name] = pd.concat([value for _, value in tmp_operations.items()]).groupby("Operation").sum().reset_index()
 
-    input_to_write["total"] = pd.concat([val for _, val in input_to_write.items()]).groupby(by="Изделие").sum().reset_index()
-    operations_to_write["total"] = pd.concat([val for _, val in operations_to_write.items()]).groupby(by="Operation").sum().reset_index()
+    orders = sorted(orders, key=lambda order: order[1])
+    input_to_write["Итог"] = pd.concat([val for _, val in input_to_write.items()]).groupby(by="Изделие").sum().reset_index()
+    operations_to_write["Итог"] = pd.concat([val for _, val in operations_to_write.items()]).groupby(by="Operation").sum().reset_index()
 
     with pd.ExcelWriter(f"./data/results/{request_id}/input.xlsx") as writer:
         for name, df in input_to_write.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
-    shifts:  dict[str, pd.DataFrame] = shift_calc.calc(orders=orders, order_types=orders_type)
+    shifts, order_readiness = shift_calc.calc(orders=[order for order, _ in orders], order_types=orders_type)
     
+    for key in order_readiness:
+        order_readiness[key] = order_readiness[key].replace(details_to_details)
+
     with pd.ExcelWriter(f"./data/results/{request_id}/operations.xlsx") as writer:
         for name, df in operations_to_write.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
     with pd.ExcelWriter(f"./data/results/{request_id}/shifts.xlsx") as writer:
         for name, df in shifts.items():
+            df.to_excel(writer, sheet_name=name, index=False)
+
+    with pd.ExcelWriter(f"./data/results/{request_id}/readiness.xlsx") as writer:
+        for name, df in order_readiness.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
 def run_calcs_old(request_id: int,

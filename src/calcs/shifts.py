@@ -92,7 +92,8 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
                                  {
                                     "Оператор станок с пу/гибка|Листогибочная": 0,
-                                    "Слесарь по сборке|Слесарная": 0
+                                    "Слесарь по сборке|Слесарная": 0,
+                                    "Эл. Сварщик и п/авт машин|Сварка полуавтоматом в среде защитного газа (MIG)": 0
                                  }
 
                                  },
@@ -117,8 +118,7 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  },
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
                                  {
-                                    "Слесарь по сборке|Сборочная": 0,
-                                    "Эл. Сварщик и п/авт машин|Сварка полуавтоматом в среде защитного газа (MIG)": 0
+                                    "Слесарь по сборке|Сборочная": 0
                                  }
                                  },
              "next_operations": {
@@ -201,7 +201,7 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx":
                                  {},
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
-                                 {"Слесарь по сборке|Упаковочная"}
+                                 {"Слесарь по сборке|Сборочная"}
                                 }
             },
             "Оператор станок с пу/гибка|Листогибочная":
@@ -295,7 +295,7 @@ class OrderType(Enum):
             return cls.DEFAULT
         elif val == "Обратное планирование (день)":
             return cls.ONLY_DAY
-        elif val == "Обратное планирование (день)":
+        elif val == "Обратное планирование (день + ночь)":
             return cls.WITH_NIGHT
         else:
             raise ValueError("Неизвестный тип заказов")
@@ -396,13 +396,13 @@ class ShiftOperation:
 
         for dt, is_night_, count in self.tmp_fill_dates:
             if dt == date:
-                if is_night_:
+                if is_night_ and is_night:
 
                     hours_available = 11 - count
 
                     if hours_available < self.detail_per_hour[detail_name]:
                         night_available = False
-                else:
+                if (not is_night) and (not is_night_):
                     
                     hours_available = 11 - count
 
@@ -435,8 +435,11 @@ class ShiftOperation:
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
+        
         self.fill_dates = []
+        self.tmp_fill_dates = []
         self.detail_per_hour = {}
+        self.orders_fill_dates = {}
 
     def clear_prev_operations(self) -> None:
         for detail in self.prev_operations:
@@ -448,10 +451,26 @@ class ShiftOperation:
     def clean_order(self, order_name: str) -> None:
         self.tmp_fill_dates = []
         self.orders_fill_dates[order_name] = {}
+        #start -> 0
+        #details_per_hour -> 0
+        for detail in self.prev_operations:
+            for prev_operation in self.prev_operations[detail]:
+                self.prev_operations[detail][prev_operation] = 0
+
+        self.detail_per_hour = {}
 
     def approve_order(self) -> None:
-        self.fill_dates.extend(self.tmp_fill_dates)
+        self.fill_dates = copy.deepcopy(self.tmp_fill_dates)
         self.tmp_fill_dates = []
+
+        for detail in self.prev_operations:
+            for prev_operation in self.prev_operations[detail]:
+                self.prev_operations[detail][prev_operation] = 0
+
+        self.detail_per_hour = {}
+
+    def start_order(self) -> None:
+        self.tmp_fill_dates = copy.deepcopy(self.fill_dates)
 
 #что мне теперь надо для вычислений
 #1. Составить конфигурации всех деталей
@@ -466,22 +485,25 @@ class ShiftCalc:
 
     def _order_calc(self,
                     order: Order,
-                    order_type: OrderType) -> bool:
+                    order_type: OrderType) -> tuple[bool, dict]:
         """
         А теперь вопрос - если мы храним текущие данные, то как делать, если не помещается?
         быстрое решение - сделать tmp_fill_date 
         """
+        details_readiness: dict = {}
+
         is_fill: dict[str, bool] = {}
 
         details_to_compute: list[str] = list(order.operations.keys())
 
         for detail in details_to_compute:
             is_fill[detail] = False
+            details_readiness[detail] = []
 
         self.__fill_operations(operations=order.operations, input_count=order.details_count, details=details_to_compute)
         self.__fill_start(details_count=order.details_count)
 
-        current_date: datetime.date =  copy.copy(order.date_range[0])
+        current_date: datetime.date =  copy.deepcopy(order.date_range[0])
         is_night: bool = False
         is_full: bool = False
 
@@ -499,6 +521,12 @@ class ShiftCalc:
                                                        prev_empty=prev_empty, detail_name=detail,
                                                        order_name=order.order_name)
                     next_names: set[str] = operation.next_operations[detail]
+
+                    cond: bool = (count> 0 ) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
+                    cond = cond or (len(next_names) == 1 and next(iter(next_names)) == "Слесарь по сборке|Упаковочная")
+
+                    if cond:
+                        details_readiness[detail].append((current_date, is_night, count))
 
                     for op_name in next_names:
                         for j in range(i + 1, len(self.shifts[detail])):
@@ -520,39 +548,46 @@ class ShiftCalc:
             else:
                 current_date += datetime.timedelta(days=1)
 
-        return is_full
+        return is_full, details_readiness
 
     def calc(self,
              orders: list[Order],
-             order_types: list[OrderType]) -> dict[str, pd.DataFrame]:
+             order_types: list[OrderType]) -> tuple[dict[str, pd.DataFrame],
+                                                    dict[str, pd.DataFrame]]:
             
             details: set[str] = set()
 
             answ: dict[str, pd.DataFrame] = {}
 
+            details_readiness: dict[str, pd.dataFrame] = {}
+
             for order_type, order in zip(order_types, orders):
 
-                if order.date_range[1] is None:
-                    order.date_range = (order.date_range[0], order.date_range[0] + datetime.timdelta(days=365 * 42))
+                order_details: set = set(order.details_count.keys())
+                
+                self._start_order(details=order_details)
 
-                is_full: bool = self._order_calc(order=order, order_type=order_type)
+                if order.date_range[1] is None:
+                    order.date_range = (order.date_range[0], order.date_range[0] + datetime.timedelta(days=365 * 42))
+
+                is_full, details_readiness_ = self._order_calc(order=order, order_type=order_type)
 
                 if not is_full:
                     self._clean_order(order_name=order.order_name)
                     self._clear_prev_operations()
-                    self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
+                    _, details_readiness_ = self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
 
-                self._approve_order()
-
-                order_details: set = set(order.details_count.keys())
+                self._approve_order(details=order_details)
+                
                 details.update(order_details)
                 answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=order.order_name)
+                details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=details_readiness_)
 
-            answ["total"] = self.__prepare_answ(details=details, order_name=None)
+            answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
 
             self.clear()
 
-            return answ
+            return answ, details_readiness
 
     def _clean_order(self,
                     order_name: str) -> None:
@@ -561,11 +596,26 @@ class ShiftCalc:
             for operation in self.shifts[detail]:
                 operation.clean_order(order_name=order_name)
 
-    def _approve_order(self) -> None:
+    def _start_order(self, details: set[str]) -> None:
 
-        for detail in self.shifts:
+        operation_checked: set(str) = set()
+
+        for detail in details:
             for operation in self.shifts[detail]:
-                operation.approve_order()
+                if operation.operation_name not in operation_checked:
+                    operation.start_order()
+                    operation_checked.add(operation.operation_name)
+
+    def _approve_order(self, details: set[str]) -> None:
+
+        operation_checked: set(str) = set()
+
+        for detail in details:
+            for operation in self.shifts[detail]:
+                if operation.operation_name not in operation_checked:
+                    operation.approve_order()
+                    operation_checked.add(operation.operation_name)
+                    
 
     def _clear_prev_operations(self):
         
@@ -589,7 +639,7 @@ class ShiftCalc:
         for detail in details_to_compute:
             is_fill[detail] = False
 
-        current_date: datetime.date =  copy.copy(date_range[0])
+        current_date: datetime.date =  copy.deepcopy(date_range[0])
 
         is_full: bool = True
 
@@ -622,7 +672,7 @@ class ShiftCalc:
 
         if not is_full:
 
-            current_date: datetime.date =  copy.copy(date_range[0])
+            current_date: datetime.date =  copy.deepcopy(date_range[0])
             is_night: bool = False
 
             for detail in details_to_compute:
@@ -667,7 +717,6 @@ class ShiftCalc:
         self.clear()
 
         return answ
-
 
     def __fill_operations(self,
                           operations: dict[str, pd.DataFrame],
@@ -715,8 +764,9 @@ class ShiftCalc:
                     operations_params["Количество"].append(operation.count)
 
                     fill_dates = operation.fill_dates if order_name is None else operation.orders_fill_dates[order_name]
-                    operations_dates[operation.operation_name] = fill_dates
                     
+                    operations_dates[operation.operation_name] = fill_dates
+
                     for date, _, _ in fill_dates:
                         min_date = min(date, min_date)
                         max_date = max(date, max_date)
@@ -729,22 +779,67 @@ class ShiftCalc:
         dates = pd.DataFrame(columns=columns, dtype=float)
         merged = pd.concat([staff_table, dates]).fillna(0.0)
 
-        new_op_dates = {}
+        new_op_dates: dict[str, dict[str, int]] = {}
 
         for val, dates in operations_dates.items():
-            tmp = []
+            tmp: dict[str, int] = {}
+            
             for date, is_night, count in dates:
                 if is_night:
-                    tmp.append((date.strftime("%d-%m-%Y") + " Ночь", count))
+                    key: str = date.strftime("%d-%m-%Y") + " Ночь"
                 else:
-                    tmp.append((date.strftime("%d-%m-%Y") + " День", count))
+                    key = date.strftime("%d-%m-%Y") + " День"
+                
+                if tmp.get(key) is None:
+                    tmp[key] = count
+                else:
+                    tmp[key] += count
+            
             new_op_dates[val] = tmp
 
+
+
         for val, dates in new_op_dates.items():
-            dates_ = [date[0] for date in dates]
-            count = [count[1] for count in dates]
+            dates_ = [date for date in dates]
+            count = [count for _, count in dates.items()]
+
             merged.loc[(merged["Сотрудник"] == val.split("|")[0]) &
                    (merged["Операция"] == val.split("|")[1]), dates_] += count
+
+        return merged
+
+    def __prepare_details_readiness(self, details_readiness: dict[str, tuple]) -> pd.DataFrame: 
+        """a"""
+        min_date: datetime.date = datetime.date(2777, 1, 1)
+        max_date: datetime.date = datetime.date(1977, 1, 1)
+
+        for key, val in details_readiness.items():
+            if val[0][0] < min_date:
+                min_date = val[0][0]
+            if val[-1][0] > max_date:
+                max_date = val[-1][0]
+        
+        details: pd.DataFrame = pd.DataFrame({"Изделие" : list(details_readiness.keys())})
+        base_range = [(min_date + datetime.timedelta(days=i)).strftime("%d-%m-%Y") for i in range((max_date - min_date).days + 1)]
+        columns: list = [[date + " День", date + " Ночь"] \
+                          for date in base_range]
+        columns = [item for row in columns for item in row]
+        dates = pd.DataFrame(columns=columns, dtype=float)
+        merged = pd.concat([details, dates]).fillna(0)
+
+        for key, val in details_readiness.items():
+            dates_: list[str] = []
+            counts: list[int] = [count for _, _, count in val]
+
+            for date_, is_night_, count in val:
+                if is_night_:
+                    key_: str = date_.strftime("%d-%m-%Y") + " Ночь"
+                else:
+                    key_ = date_.strftime("%d-%m-%Y") + " День"
+
+                dates_.append(key_)
+            
+            merged.loc[merged["Изделие"] == key, dates_] += counts
 
         return merged
 
@@ -804,6 +899,7 @@ NAME_TO_OP: dict[str, ShiftOperation] = \
     "Слесарь по сборке|Слесарная": plumb,
     "Оператор станок с пу/гибка|Вальцовочная": rolling
 }
+
 details_to_ops: dict[str, list] = {
     "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly, pack],
     "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly],
