@@ -98,7 +98,7 @@ def delete_calc():
         json.dump([], file)
     
     with Path("./data/results/orders.json").open("w") as file:
-        json.dump([], file)
+        json.dump({}, file)
 
 with st.container():
     st.button(label="Очистить расчёты", on_click=delete_calc)
