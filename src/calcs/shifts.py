@@ -393,21 +393,29 @@ class ShiftOperation:
         day_available: bool = not is_night
         night_available: bool = is_night
         hours_available: float = 11
+        idx_date: int = -1
 
-        for dt, is_night_, count in self.tmp_fill_dates:
+        for i, val in enumerate(self.tmp_fill_dates):
+            dt, is_night_, count = val
+            
             if dt == date:
                 if is_night_ and is_night:
-
+                    
                     hours_available = 11 - count
 
                     if hours_available < self.detail_per_hour[detail_name]:
                         night_available = False
+                    else:
+                        idx_date = i
+
                 if (not is_night) and (not is_night_):
                     
                     hours_available = 11 - count
 
                     if hours_available < self.detail_per_hour[detail_name]:
                         day_available = False
+                    else:
+                        idx_date = i
 
         if not day_available and not night_available:
             return 0, False
@@ -415,9 +423,15 @@ class ShiftOperation:
         details_in_this_date: int = int(min([self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
                                             min_available_details, hours_available * self.detail_per_hour[detail_name]]))
         if details_in_this_date > 0:
-            self.tmp_fill_dates.append((date, is_night,
-                                        details_in_this_date / self.detail_per_hour[detail_name]))
             
+            if idx_date == -1:
+                self.tmp_fill_dates.append((date, is_night,
+                                            details_in_this_date / self.detail_per_hour[detail_name]))
+            else:
+                val: tuple = self.tmp_fill_dates.pop(idx_date)
+                tmp_val: tuple = (val[0], val[1], val[2] + details_in_this_date / self.detail_per_hour[detail_name])
+                self.tmp_fill_dates.append(tmp_val)
+
             if order_name not in self.orders_fill_dates:
                 self.orders_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
             else:
