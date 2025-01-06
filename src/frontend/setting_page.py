@@ -94,11 +94,15 @@ def start_calc() -> None:
     orders[num_calc] = ["Итог"]
 
     for key, val in edited_df.items():
-        data_map_[key] = f"{val[2][0].strftime('%d.%m.%Y')}"
+        if val[2][0] is not None:
+            data_map_[key] = f"{val[2][0].strftime('%d.%m.%Y')}"
         
-        if val[2][1] is not None:
+        if val[2][1] is not None and val[2][0] is not None:
             data_map_[key] += f"- {val[2][1].strftime('%d.%m.%Y')}"
         
+        if val[2][0] is None and val[2][1] is not None:
+            data_map_[key] = f"{val[2][1].strftime('%d.%m.%Y')}"
+
         data_map_[key] += f"<br />Тип расчёта: {val[1]}<br />Приоритет заказа: {val[3]}"
         orders[num_calc].append(key)
 
@@ -141,7 +145,7 @@ with st.container(key=st.session_state.edit_table):
 
         option = st.selectbox(
                               "Тип расчёта",
-                              ("Планирование", "Обратное планирование (день)", "Обратное планирование (день + ночь)"),
+                              ("Планирование", "Прямое планирование (день)", "Прямое планирование (день + ночь)", "Обратное планирование (день)", "Обратное планирование (день + ночь)"),
                               index=None,
                               key=f"sb_{st.session_state.edit_table}_{i}"
                              )
@@ -153,11 +157,16 @@ with st.container(key=st.session_state.edit_table):
                                                                              format="DD.MM.YYYY",
                                                                              key=f"dr_{st.session_state.edit_table}_{i}"
                                                                             )
-        else:
+        elif option in ["Прямое планирование (день)", "Прямое планирование (день + ночь)"]:
             date_calc: datetime.date = st.date_input("Дата старта", 
                                                      today,
                                                      key=f"dr_{st.session_state.edit_table}_{i}")
             dates_range = [date_calc, None]
+        else:
+            date_calc: datetime.date = st.date_input("Дата завершения заказа", 
+                                                     today,
+                                                     key=f"dr_{st.session_state.edit_table}_{i}")
+            dates_range = [None, date_calc]
         
         edited_df[name] = (edited_df_, option, dates_range, priority)
 

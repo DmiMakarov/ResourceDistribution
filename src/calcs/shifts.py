@@ -286,6 +286,8 @@ class OrderType(Enum):
     DEFAULT=0
     ONLY_DAY=1
     WITH_NIGHT=2
+    REVERSE_ONLY_DAY=3
+    REVERSE_WITH_NIGHT=4
 
     "Планирование", "Обратное планирование (день)", "Обратное планирование (день + ночь)"
 
@@ -293,10 +295,14 @@ class OrderType(Enum):
     def from_str(cls, val: str):
         if val == "Планирование":
             return cls.DEFAULT
-        elif val == "Обратное планирование (день)":
+        elif val == "Прямое планирование (день)":
             return cls.ONLY_DAY
-        elif val == "Обратное планирование (день + ночь)":
+        elif val == "Прямое планирование (день + ночь)":
             return cls.WITH_NIGHT
+        elif val == "Обратное планирование (день)":
+            return cls.REVERSE_ONLY_DAY
+        elif val == "Обратное планирование (день + ночь)":
+            return cls.REVERSE_WITH_NIGHT
         else:
             raise ValueError("Неизвестный тип заказов")
 
@@ -464,7 +470,7 @@ class ShiftOperation:
 
     def clean_order(self, order_name: str) -> None:
         self.tmp_fill_dates = []
-        self.orders_fill_dates[order_name] = {}
+        self.orders_fill_dates[order_name] = []
         #start -> 0
         #details_per_hour -> 0
         for detail in self.prev_operations:
@@ -499,7 +505,7 @@ class ShiftCalc:
 
     def _order_calc(self,
                     order: Order,
-                    order_type: OrderType) -> tuple[bool, dict]:
+                    order_type: OrderType) -> tuple[bool, dict, datetime.date]:
         """
         А теперь вопрос - если мы храним текущие данные, то как делать, если не помещается?
         быстрое решение - сделать tmp_fill_date 
@@ -536,7 +542,7 @@ class ShiftCalc:
                                                        order_name=order.order_name)
                     next_names: set[str] = operation.next_operations[detail]
 
-                    cond: bool = (count> 0 ) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
+                    cond: bool = (count > 0) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
                     cond = cond or (len(next_names) == 1 and next(iter(next_names)) == "Слесарь по сборке|Упаковочная")
 
                     if cond:
@@ -554,7 +560,7 @@ class ShiftCalc:
             for _, val in is_fill.items():
                 is_full = is_full and val
 
-            if order_type == OrderType.WITH_NIGHT:
+            if order_type == OrderType.WITH_NIGHT or order_type == OrderType.REVERSE_WITH_NIGHT:
                 if is_night:
                     current_date += datetime.timedelta(days=1)
 
@@ -562,7 +568,79 @@ class ShiftCalc:
             else:
                 current_date += datetime.timedelta(days=1)
 
-        return is_full, details_readiness
+        if not is_night:
+            current_date -= datetime.timedelta(days=1)
+
+        return is_full, details_readiness, current_date
+
+    def _reverse_order(self,
+                       order: Order,
+                       order_type: OrderType) -> pd.DataFrame:
+        #мне нравится идея с бинпоиском точки старта
+        #верхняя граница - точка старта
+        #нижняя граница должна быть не слишком далёкой, но достаточно далёкой, чтобы можно было точно сказать, что ответ между
+        #предлагаю ввести коэффициенты - на каждый подшипник 0.5 дняб на каждую дверь и кормушку 1.5 дня
+
+        count_map: dict[str, float] = {
+            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5, 
+            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5, 
+            "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 1.5
+        }
+
+        order_details: set = set(order.details_count.keys())
+        days: int = np.ceil(sum([val * count_map[key] for key, val in count_map.items()]))
+        date_end: datetime.date = order.date_range[1]
+        start_date_bs: datetime.date = date_end - datetime.timedelta(days=days)
+
+        #while True:
+        #    mid_date: datetime.date = start_date_bs + (end_date_bs - start_date_bs)/2
+        long_date_end: datetime.date = date_end + datetime.timedelta(days=365*12)
+        order.date_range = (start_date_bs, long_date_end)
+        _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
+        delta_days = (end_date_calc - date_end).days
+
+        if delta_days != 0:
+            self._clean_order(order_name=order.order_name)
+            self._clear_prev_operations()
+            self._start_order(details=order_details)
+            
+            start_date_bs -= datetime.timedelta(days=delta_days)
+            order.date_range = (start_date_bs, long_date_end)
+            _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
+            delta_days = (end_date_calc - date_end).days
+            sign: bool = delta_days > 0
+
+            while True:
+
+                if delta_days > 0:
+                    start_date_bs -= datetime.timedelta(days=1)
+                elif delta_days < 0:
+                    start_date_bs += datetime.timedelta(days=1)
+                else:
+                    break
+
+                self._clean_order(order_name=order.order_name)
+                self._clear_prev_operations()
+                self._start_order(details=order_details)
+                order.date_range = (start_date_bs, long_date_end)
+                _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
+                delta_days = (end_date_calc - date_end).days
+
+                new_sign: bool = delta_days > 0
+
+                if new_sign != sign:
+                    if sign or delta_days == 0:
+                        break
+                    else:
+                        self._clean_order(order_name=order.order_name)
+                        self._clear_prev_operations()
+                        order.date_range = (start_date_bs - datetime.timedelta(days=1), long_date_end)
+                        _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
+                        break
+                    
+            order.date_range = (start_date_bs - datetime.timedelta(days=days), date_end)
+            return details_readiness
+
 
     def calc(self,
              orders: list[Order],
@@ -584,12 +662,16 @@ class ShiftCalc:
                 if order.date_range[1] is None:
                     order.date_range = (order.date_range[0], order.date_range[0] + datetime.timedelta(days=365 * 42))
 
-                is_full, details_readiness_ = self._order_calc(order=order, order_type=order_type)
+                if order_type == OrderType.REVERSE_ONLY_DAY or order_type == OrderType.REVERSE_WITH_NIGHT:
+                    details_readiness_ = self._reverse_order(order=order, order_type=order_type)
+                else:
+                    is_full, details_readiness_, _ = self._order_calc(order=order, order_type=order_type)
 
-                if not is_full:
-                    self._clean_order(order_name=order.order_name)
-                    self._clear_prev_operations()
-                    _, details_readiness_ = self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
+                    if not is_full:
+                        self._clean_order(order_name=order.order_name)
+                        self._clear_prev_operations()
+                        self._start_order(details=order_details)
+                        _, details_readiness_, _ = self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
 
                 self._approve_order(details=order_details)
                 
