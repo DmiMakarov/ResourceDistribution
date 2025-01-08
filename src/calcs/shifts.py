@@ -588,7 +588,7 @@ class ShiftCalc:
         }
 
         order_details: set = set(order.details_count.keys())
-        days: int = np.ceil(sum([val * count_map[key] for key, val in count_map.items()]))
+        days: int = np.ceil(sum([val * order.details_count[key] for key, val in count_map.items()]))
         date_end: datetime.date = order.date_range[1]
         start_date_bs: datetime.date = date_end - datetime.timedelta(days=days)
 
@@ -642,9 +642,44 @@ class ShiftCalc:
             return details_readiness
 
 
+    def backet_calc(self, 
+                    orders: list[Order],
+                    order_types: list[OrderType]) -> tuple[dict[str, pd.DataFrame],
+                                                    dict[str, pd.DataFrame]]:
+        last_index: int  = -1 
+        start_days: list[int] = []
+        end_dates: list[datetime.date] = []
+
+        count_map: dict[str, float] = {
+            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5, 
+            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5, 
+            "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 1.5
+        }
+
+        for i, order_type in enumerate(order_types):
+            if order_type == OrderType.REVERSE_ONLY_DAY or order_type == OrderType.REVERSE_WITH_NIGHT:
+                last_index = i + 1
+                start_days.append(np.ceil(sum([val * orders[i].details_count[key] for key, val in count_map.items()])))
+                end_dates.append(orders[i].date_range[1])
+            else:
+                start_days.append(0)
+                end_dates.append(datetime.date(year=1974, month=2, day=27))
+
+        start_days = start_days[:last_index]
+        end_dates = end_dates[:last_index]
+        if last_index == -1:
+            raise ValueError("There are no any reverse orders")
+
+        backet_order: list[Order] = orders[:last_index]
+        non_backet: list[Order] = [] if last_index == len(orders) else orders[last_index:]
+
+
+
+
     def calc(self,
              orders: list[Order],
-             order_types: list[OrderType]) -> tuple[dict[str, pd.DataFrame],
+             order_types: list[OrderType],
+             clean_all: bool = True) -> tuple[dict[str, pd.DataFrame],
                                                     dict[str, pd.DataFrame]]:
             
             details: set[str] = set()
@@ -681,7 +716,8 @@ class ShiftCalc:
 
             answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
 
-            self.clear()
+            if clean_all:
+                self.clear()
 
             return answ, details_readiness
 
