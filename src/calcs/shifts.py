@@ -646,8 +646,9 @@ class ShiftCalc:
                     orders: list[Order],
                     order_types: list[OrderType]) -> tuple[dict[str, pd.DataFrame],
                                                     dict[str, pd.DataFrame]]:
+        start_index: int = -1
         last_index: int  = -1 
-        start_days: list[int] = []
+        start_dates: list[list[datetime.date]] = []
         end_dates: list[datetime.date] = []
 
         count_map: dict[str, float] = {
@@ -658,20 +659,39 @@ class ShiftCalc:
 
         for i, order_type in enumerate(order_types):
             if order_type == OrderType.REVERSE_ONLY_DAY or order_type == OrderType.REVERSE_WITH_NIGHT:
+                
+                if start_index == -1:
+                    start_index = i
+
                 last_index = i + 1
-                start_days.append(np.ceil(sum([val * orders[i].details_count[key] for key, val in count_map.items()])))
+                days_before: int = np.ceil(sum([val * orders[i].details_count[key] for key, val in count_map.items()])) * len(orders)
+                start_dates.append([orders[i].date_range[1] - datetime.timedelta(days=days_before - i) for i in range(days_before)])
                 end_dates.append(orders[i].date_range[1])
             else:
-                start_days.append(0)
-                end_dates.append(datetime.date(year=1974, month=2, day=27))
+                start_dates.append([orders[i].date_range[0]])
+                end_dates.append(orders[i].date_range[1])
 
-        start_days = start_days[:last_index]
-        end_dates = end_dates[:last_index]
+        start_dates = start_dates[start_index:last_index]
+        end_dates = end_dates[start_index:last_index]
+        
         if last_index == -1:
             raise ValueError("There are no any reverse orders")
 
-        backet_order: list[Order] = orders[:last_index]
-        non_backet: list[Order] = [] if last_index == len(orders) else orders[last_index:]
+        backet_order: list[Order] = orders[start_index:last_index]
+        non_backet: list[Order] = orders[:start_index] 
+        non_backet.extend(orders[last_index:])
+
+        #TODO make calc before start_date
+
+        #Для расчёта таким способом надо при current_date == start_date производить инициализацию start_pos
+        #а дальше расчёт как обычно
+        #внешний цикл - перебор вариантов (for dates in product(*start_dates))
+        #второй цикл по дням
+        #третий цикл внутри по проверке кого в этот день вставлять
+        #Как тогда в таком варианте сделать учёт day\night в случае интервала? пока я бы убрал, потому что такого требования не было
+        #А так просто надо добавить, что если count < required and current_date > end_date, то запустить цикл по дням заного
+
+        #TODO make calc after start_date
 
 
 
