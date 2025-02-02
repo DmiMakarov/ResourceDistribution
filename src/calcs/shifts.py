@@ -313,7 +313,7 @@ class Order:
     operations: dict[str, pd.DataFrame]
     details_count: dict[str, int]
     date_range: tuple[datetime.date, datetime.date | None]
-    
+
 
 class ShiftOperation:
 
@@ -403,10 +403,10 @@ class ShiftOperation:
 
         for i, val in enumerate(self.tmp_fill_dates):
             dt, is_night_, count = val
-            
+
             if dt == date:
                 if is_night_ and is_night:
-                    
+
                     hours_available = 11 - count
 
                     if hours_available < self.detail_per_hour[detail_name]:
@@ -415,7 +415,7 @@ class ShiftOperation:
                         idx_date = i
 
                 if (not is_night) and (not is_night_):
-                    
+
                     hours_available = 11 - count
 
                     if hours_available < self.detail_per_hour[detail_name]:
@@ -429,7 +429,7 @@ class ShiftOperation:
         details_in_this_date: int = int(min([self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
                                             min_available_details, hours_available * self.detail_per_hour[detail_name]]))
         if details_in_this_date > 0:
-            
+
             if idx_date == -1:
                 self.tmp_fill_dates.append((date, is_night,
                                             details_in_this_date / self.detail_per_hour[detail_name]))
@@ -442,7 +442,104 @@ class ShiftOperation:
                 self.orders_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
             else:
                 self.orders_fill_dates[order_name].append((date, is_night, details_in_this_date / self.detail_per_hour[detail_name]))
-            
+
+        #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
+        for op in self.prev_operations[detail_name]:
+            self.prev_operations[detail_name][op] -= details_in_this_date
+
+            prev_empty = prev_empty and (self.prev_operations[detail_name][op] == 0)
+
+        return details_in_this_date, prev_empty
+
+    #the same as prev, but uniformly distribute
+    def next(self,
+             date: datetime.date,
+             is_night: bool,
+             prev_empty: bool,
+             detail_name: str,
+             order_name: str) -> tuple[int, bool]:
+
+        #min_available_details: int = min([value for _, value in  self.prev_operations[detail_name].items()])
+        #тут теперь у нас должен быть prev_ops = {"detail": {}"prev_op": {"order": count}}}
+        #то есть надо проссумировать
+        count_per_ops = []
+
+        #val: {"order": count}
+        for i, val in self.prev_operations[detail_name].items():
+            count_per_ops.append(min([value for _, value in val.items()]))
+
+        min_available_details = min(count_per_ops)
+
+        if not prev_empty:
+
+            if min_available_details / self.detail_per_hour[detail_name] < 11:
+                return 0, False
+
+            is_enough: bool = True
+
+            for op_name in self.prev_operations[detail_name]:
+                if op_name == "Start":
+                    prev_empty = True
+                    break
+                # если требуемое количество деталей для 12 делается меньше,
+                # чем за 6 часов, то надо запускать
+                #единственное, надо как-то подвязаться к количеству деталей
+
+                if self.detail_per_hour[detail_name] * 11 > NAME_TO_OP[op_name].detail_per_hour[detail_name] * 6 \
+                   and self.prev_operations[detail_name][op_name] <= NAME_TO_OP[op_name].detail_per_hour[detail_name] * 11:
+                    is_enough = False
+                    break
+
+            if not is_enough:
+                return 0, False
+
+        day_available: bool = not is_night
+        night_available: bool = is_night
+        hours_available: float = 11
+        idx_date: int = -1
+
+        for i, val in enumerate(self.tmp_fill_dates):
+            dt, is_night_, count = val
+
+            if dt == date:
+                if is_night_ and is_night:
+
+                    hours_available = 11 - count
+
+                    if hours_available < self.detail_per_hour[detail_name]:
+                        night_available = False
+                    else:
+                        idx_date = i
+
+                if (not is_night) and (not is_night_):
+
+                    hours_available = 11 - count
+
+                    if hours_available < self.detail_per_hour[detail_name]:
+                        day_available = False
+                    else:
+                        idx_date = i
+
+        if not day_available and not night_available:
+            return 0, False
+
+        details_in_this_date: int = int(min([self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
+                                            min_available_details, hours_available * self.detail_per_hour[detail_name]]))
+        if details_in_this_date > 0:
+
+            if idx_date == -1:
+                self.tmp_fill_dates.append((date, is_night,
+                                            details_in_this_date / self.detail_per_hour[detail_name]))
+            else:
+                val: tuple = self.tmp_fill_dates.pop(idx_date)
+                tmp_val: tuple = (val[0], val[1], val[2] + details_in_this_date / self.detail_per_hour[detail_name])
+                self.tmp_fill_dates.append(tmp_val)
+
+            if order_name not in self.orders_fill_dates:
+                self.orders_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
+            else:
+                self.orders_fill_dates[order_name].append((date, is_night, details_in_this_date / self.detail_per_hour[detail_name]))
+
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
         for op in self.prev_operations[detail_name]:
             self.prev_operations[detail_name][op] -= details_in_this_date
@@ -455,7 +552,7 @@ class ShiftOperation:
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
-        
+
         self.fill_dates = []
         self.tmp_fill_dates = []
         self.detail_per_hour = {}
@@ -465,7 +562,7 @@ class ShiftOperation:
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
-        
+
         self.detail_per_hour = {}
 
     def clean_order(self, order_name: str) -> None:
@@ -508,7 +605,7 @@ class ShiftCalc:
                     order_type: OrderType) -> tuple[bool, dict, datetime.date]:
         """
         А теперь вопрос - если мы храним текущие данные, то как делать, если не помещается?
-        быстрое решение - сделать tmp_fill_date 
+        быстрое решение - сделать tmp_fill_date
         """
         details_readiness: dict = {}
 
@@ -528,7 +625,7 @@ class ShiftCalc:
         is_full: bool = False
 
         while current_date <= order.date_range[1] and not is_full:
-            
+
             for detail in details_to_compute:
 
                 if is_fill[detail]:
@@ -582,8 +679,8 @@ class ShiftCalc:
         #предлагаю ввести коэффициенты - на каждый подшипник 0.5 дняб на каждую дверь и кормушку 1.5 дня
 
         count_map: dict[str, float] = {
-            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5, 
-            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5, 
+            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5,
+            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5,
             "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 1.5
         }
 
@@ -603,7 +700,7 @@ class ShiftCalc:
             self._clean_order(order_name=order.order_name)
             self._clear_prev_operations()
             self._start_order(details=order_details)
-            
+
             start_date_bs -= datetime.timedelta(days=delta_days)
             order.date_range = (start_date_bs, long_date_end)
             _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
@@ -637,29 +734,29 @@ class ShiftCalc:
                         order.date_range = (start_date_bs - datetime.timedelta(days=1), long_date_end)
                         _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
                         break
-                    
+
             order.date_range = (start_date_bs - datetime.timedelta(days=days), date_end)
             return details_readiness
 
 
-    def backet_calc(self, 
+    def backet_calc(self,
                     orders: list[Order],
                     order_types: list[OrderType]) -> tuple[dict[str, pd.DataFrame],
                                                     dict[str, pd.DataFrame]]:
         start_index: int = -1
-        last_index: int  = -1 
+        last_index: int  = -1
         start_dates: list[list[datetime.date]] = []
         end_dates: list[datetime.date] = []
 
         count_map: dict[str, float] = {
-            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5, 
-            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5, 
+            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5,
+            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5,
             "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 1.5
         }
 
         for i, order_type in enumerate(order_types):
             if order_type == OrderType.REVERSE_ONLY_DAY or order_type == OrderType.REVERSE_WITH_NIGHT:
-                
+
                 if start_index == -1:
                     start_index = i
 
@@ -673,12 +770,12 @@ class ShiftCalc:
 
         start_dates = start_dates[start_index:last_index]
         end_dates = end_dates[start_index:last_index]
-        
+
         if last_index == -1:
             raise ValueError("There are no any reverse orders")
 
         backet_order: list[Order] = orders[start_index:last_index]
-        non_backet: list[Order] = orders[:start_index] 
+        non_backet: list[Order] = orders[:start_index]
         non_backet.extend(orders[last_index:])
 
         #TODO make calc before start_date
@@ -701,7 +798,7 @@ class ShiftCalc:
              order_types: list[OrderType],
              clean_all: bool = True) -> tuple[dict[str, pd.DataFrame],
                                                     dict[str, pd.DataFrame]]:
-            
+
             details: set[str] = set()
 
             answ: dict[str, pd.DataFrame] = {}
@@ -711,7 +808,7 @@ class ShiftCalc:
             for order_type, order in zip(order_types, orders):
 
                 order_details: set = set(order.details_count.keys())
-                
+
                 self._start_order(details=order_details)
 
                 if order.date_range[1] is None:
@@ -729,7 +826,7 @@ class ShiftCalc:
                         _, details_readiness_, _ = self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
 
                 self._approve_order(details=order_details)
-                
+
                 details.update(order_details)
                 answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=order.order_name)
                 details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=details_readiness_)
@@ -767,12 +864,12 @@ class ShiftCalc:
                 if operation.operation_name not in operation_checked:
                     operation.approve_order()
                     operation_checked.add(operation.operation_name)
-                    
+
 
     def _clear_prev_operations(self):
-        
+
         for detail in self.shifts:
-            for operation in self.shifts[detail]: 
+            for operation in self.shifts[detail]:
                 operation.clear_prev_operations()
 
     #строго говоря, тут всё надо распихать по струкутрам - operations, configs
@@ -916,7 +1013,7 @@ class ShiftCalc:
                     operations_params["Количество"].append(operation.count)
 
                     fill_dates = operation.fill_dates if order_name is None else operation.orders_fill_dates[order_name]
-                    
+
                     operations_dates[operation.operation_name] = fill_dates
 
                     for date, _, _ in fill_dates:
@@ -935,18 +1032,18 @@ class ShiftCalc:
 
         for val, dates in operations_dates.items():
             tmp: dict[str, int] = {}
-            
+
             for date, is_night, count in dates:
                 if is_night:
                     key: str = date.strftime("%d-%m-%Y") + " Ночь"
                 else:
                     key = date.strftime("%d-%m-%Y") + " День"
-                
+
                 if tmp.get(key) is None:
                     tmp[key] = count
                 else:
                     tmp[key] += count
-            
+
             new_op_dates[val] = tmp
 
 
@@ -960,7 +1057,7 @@ class ShiftCalc:
 
         return merged
 
-    def __prepare_details_readiness(self, details_readiness: dict[str, tuple]) -> pd.DataFrame: 
+    def __prepare_details_readiness(self, details_readiness: dict[str, tuple]) -> pd.DataFrame:
         """a"""
         min_date: datetime.date = datetime.date(2777, 1, 1)
         max_date: datetime.date = datetime.date(1977, 1, 1)
@@ -970,7 +1067,7 @@ class ShiftCalc:
                 min_date = val[0][0]
             if val[-1][0] > max_date:
                 max_date = val[-1][0]
-        
+
         details: pd.DataFrame = pd.DataFrame({"Изделие" : list(details_readiness.keys())})
         base_range = [(min_date + datetime.timedelta(days=i)).strftime("%d-%m-%Y") for i in range((max_date - min_date).days + 1)]
         columns: list = [[date + " День", date + " Ночь"] \
@@ -990,7 +1087,7 @@ class ShiftCalc:
                     key_ = date_.strftime("%d-%m-%Y") + " День"
 
                 dates_.append(key_)
-            
+
             merged.loc[merged["Изделие"] == key, dates_] += counts
 
         return merged
