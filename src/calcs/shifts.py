@@ -5,6 +5,7 @@ Main idea is to accumulate info about previous operation during one shift
 """
 import copy
 import datetime
+import itertools
 
 import numpy as np
 import pandas as pd
@@ -456,7 +457,8 @@ class ShiftOperation:
                     date: datetime.date,
                     is_night: bool,
                     prev_empty: bool,
-                    detail_name: str) -> tuple[int, bool]:
+                    detail_name: str,
+                    orders_night: set[str]) -> tuple[int, bool]:
 
         #min_available_details: int = min([value for _, value in  self.prev_operations[detail_name].items()])
         #тут теперь у нас должен быть prev_ops = {"detail": {}"prev_op": {"order": count}}}
@@ -465,7 +467,7 @@ class ShiftOperation:
 
         #val: {"order": count}
         for i, val in self.prev_operations[detail_name].items():
-            count_per_ops[i] = sum([value for _, value in val.items()])
+            count_per_ops[i] = sum([value for order, value in val.items() if order in orders_night])
 
         min_available_details = np.min(count_per_ops)
 
@@ -543,6 +545,10 @@ class ShiftOperation:
             #по идее для разных предыдущих операций для одного и того же заказа
             #должны быть одинаковое количество
             for order, count in ordered_orders.items():
+                if is_night and order not in orders_night:
+                    len_ -= 1
+                    continue
+
                 used = min(count, available_details / len_)
 
                 if order not in self.orders_fill_dates:
@@ -804,6 +810,8 @@ class ShiftCalc:
         non_backet: list[Order] = orders[:start_index]
         non_backet.extend(orders[last_index:])
 
+        nights_orders: set[str] = set([order.order_name for i, order in enumerate(orders) if order_types[i] == OrderType.REVERSE_WITH_NIGHT])
+
         #TODO make calc before start_date
 
         #Для расчёта таким способом надо при current_date == start_date производить инициализацию start_pos
@@ -813,6 +821,16 @@ class ShiftCalc:
         #третий цикл внутри по проверке кого в этот день вставлять
         #Как тогда в таком варианте сделать учёт day\night в случае интервала? пока я бы убрал, потому что такого требования не было
         #А так просто надо добавить, что если count < required and current_date > end_date, то запустить цикл по дням заного
+
+        #получается, нужно делать по ночным
+        for first_dates in itertools.product(*start_dates):
+            current_date = min(first_dates)
+            is_night = False
+            #надо придумать, как остановить потом цикл
+            while True:
+
+                
+
 
         #TODO make calc after start_date
 
