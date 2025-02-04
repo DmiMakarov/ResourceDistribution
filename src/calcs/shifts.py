@@ -427,7 +427,7 @@ class ShiftOperation:
             return 0, False
 
         details_in_this_date: int = int(min([self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
-                                            min_available_details, hours_available * self.detail_per_hour[detail_name]]))
+                                             min_available_details, hours_available * self.detail_per_hour[detail_name]]))
         if details_in_this_date > 0:
 
             if idx_date == -1:
@@ -452,23 +452,22 @@ class ShiftOperation:
         return details_in_this_date, prev_empty
 
     #the same as prev, but uniformly distribute
-    def next(self,
-             date: datetime.date,
-             is_night: bool,
-             prev_empty: bool,
-             detail_name: str,
-             order_name: str) -> tuple[int, bool]:
+    def next_revert(self,
+                    date: datetime.date,
+                    is_night: bool,
+                    prev_empty: bool,
+                    detail_name: str) -> tuple[int, bool]:
 
         #min_available_details: int = min([value for _, value in  self.prev_operations[detail_name].items()])
         #тут теперь у нас должен быть prev_ops = {"detail": {}"prev_op": {"order": count}}}
         #то есть надо проссумировать
-        count_per_ops = []
+        count_per_ops = np.zeros(len(self.prev_operations[detail_name]))
 
         #val: {"order": count}
         for i, val in self.prev_operations[detail_name].items():
-            count_per_ops.append(min([value for _, value in val.items()]))
+            count_per_ops[i] = sum([value for _, value in val.items()])
 
-        min_available_details = min(count_per_ops)
+        min_available_details = np.min(count_per_ops)
 
         if not prev_empty:
 
@@ -535,20 +534,44 @@ class ShiftOperation:
                 tmp_val: tuple = (val[0], val[1], val[2] + details_in_this_date / self.detail_per_hour[detail_name])
                 self.tmp_fill_dates.append(tmp_val)
 
-            if order_name not in self.orders_fill_dates:
-                self.orders_fill_dates[order_name] = [(date, is_night, details_in_this_date / self.detail_per_hour[detail_name])]
-            else:
-                self.orders_fill_dates[order_name].append((date, is_night, details_in_this_date / self.detail_per_hour[detail_name]))
-
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
-        for op in self.prev_operations[detail_name]:
-            self.prev_operations[detail_name][op] -= details_in_this_date
+        for op, orders in self.prev_operations[detail_name].items():
 
-            prev_empty = prev_empty and (self.prev_operations[detail_name][op] == 0)
+            available_details = details_in_this_date
+            len_ = len(orders)
+            ordered_orders = dict(sorted(orders.items(), key=lambda item: item[1]))
+            #по идее для разных предыдущих операций для одного и того же заказа
+            #должны быть одинаковое количество
+            for order, count in ordered_orders.items():
+                used = min(count, available_details / len_)
+
+                if order not in self.orders_fill_dates:
+                    self.orders_fill_dates[order] = [(date, is_night, used / self.detail_per_hour[detail_name])]
+                else:
+                    self.orders_fill_dates[order].append((date, is_night, used / self.detail_per_hour[detail_name]))
+
+                ordered_orders[order] -= used
+                available_details -= used
+                len_ -= 1
+
+            self.prev_operations[detail_name][op] = ordered_orders
+
+        is_empty = True
+
+        for ops, orders in self.prev_operations[detail_name].items():
+            for order, count in orders.items():
+                if count > 0:
+                    is_empty = False
+                    break
+            if not is_empty:
+                break
+
+        prev_empty = prev_empty and is_empty
 
         return details_in_this_date, prev_empty
 
     def clear(self)-> None:
+        """Используется, чтобы очистить результаты всех расчётов"""
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
@@ -559,6 +582,7 @@ class ShiftOperation:
         self.orders_fill_dates = {}
 
     def clear_prev_operations(self) -> None:
+        """Не имеет смысла, потому что всегда используется с clean_order"""
         for detail in self.prev_operations:
             for prev_operation in self.prev_operations[detail]:
                 self.prev_operations[detail][prev_operation] = 0
@@ -566,6 +590,7 @@ class ShiftOperation:
         self.detail_per_hour = {}
 
     def clean_order(self, order_name: str) -> None:
+        """Очищает информацию о заказе. Вызывается перед перерасчётом заказа"""
         self.tmp_fill_dates = []
         self.orders_fill_dates[order_name] = []
         #start -> 0
@@ -577,6 +602,7 @@ class ShiftOperation:
         self.detail_per_hour = {}
 
     def approve_order(self) -> None:
+        """Подтверждает заказ"""
         self.fill_dates = copy.deepcopy(self.tmp_fill_dates)
         self.tmp_fill_dates = []
 
@@ -698,7 +724,7 @@ class ShiftCalc:
 
         if delta_days != 0:
             self._clean_order(order_name=order.order_name)
-            self._clear_prev_operations()
+            #self._clear_prev_operations()
             self._start_order(details=order_details)
 
             start_date_bs -= datetime.timedelta(days=delta_days)
@@ -717,7 +743,7 @@ class ShiftCalc:
                     break
 
                 self._clean_order(order_name=order.order_name)
-                self._clear_prev_operations()
+                #self._clear_prev_operations()
                 self._start_order(details=order_details)
                 order.date_range = (start_date_bs, long_date_end)
                 _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
@@ -730,14 +756,14 @@ class ShiftCalc:
                         break
                     else:
                         self._clean_order(order_name=order.order_name)
-                        self._clear_prev_operations()
+                        #self._clear_prev_operations()
                         order.date_range = (start_date_bs - datetime.timedelta(days=1), long_date_end)
                         _, details_readiness, end_date_calc = self._order_calc(order=order, order_type=order_type)
                         break
 
             order.date_range = (start_date_bs - datetime.timedelta(days=days), date_end)
-            return details_readiness
 
+        return details_readiness
 
     def backet_calc(self,
                     orders: list[Order],
@@ -821,7 +847,7 @@ class ShiftCalc:
 
                     if not is_full:
                         self._clean_order(order_name=order.order_name)
-                        self._clear_prev_operations()
+                        #self._clear_prev_operations()
                         self._start_order(details=order_details)
                         _, details_readiness_, _ = self._order_calc(order=order, order_type=OrderType.WITH_NIGHT)
 
