@@ -31,8 +31,6 @@ def run_calcs(request_id: int,
         details: list[Detail] = [Detail(name=row["Изделие"], count=int(row["Количество"])) \
                                  for _, row in input_to_write[order_name].iterrows()]
 
-
-
         tmp_operations: dict[str, pd.DataFrame] = table_time.calc(details=details)
 
         input_count: dict[str, int] = {}

@@ -822,11 +822,43 @@ class ShiftCalc:
         #Как тогда в таком варианте сделать учёт day\night в случае интервала? пока я бы убрал, потому что такого требования не было
         #А так просто надо добавить, что если count < required and current_date > end_date, то запустить цикл по дням заного
 
+        #какие вообще тут есть циклы
+        #1. Цикл по наборам дат (перебор)
+        #2. Цикл по дате 
+        #3. Цикл по заказам
+        #4. Цикл по детялям
+
+        #вложенность циклов:
+        #1. Цикл по наборам дат (перебор)
+        #2. Цикл по дате 
+        #3. Цикл по деталям
+        #Цикл по заказам неявно учтём в вычислении next для shift
+        #Что делать с деталями? Наверное, стоит оставить приоритет исполнения одной детали. 
+        #С точки зрения производства - это самое логичное, потому что сначала работник будет делать однообразную работу. Get it?
+
+        #Нам ещё из этого цикла надо понять, когда какой заказ закончился
+        #В next мы можем выкидывать не просто quajtity, Но {"order": quantity}
+        # Будет словарь {order: {detail: quantity}}, от которого будет браться информация о 
+        # Надо посмотреть, хешбл ли пандасовский timestamp, if yes, then i need to construct 
+        # dict {data: order} and then i can insert details from previous dict
+
+        #Чтобы начать новый расчёт надо:
+        #1. Скопировать все операции в tmp (ну и всё)
+
+        # потом надо придумать, как закончить (надо будет почистить tmp, потому что потом буду всё с нуля)
+
+        orders_count: dict[str, dict[str, int]] = {}
+
+        for order in backet_order.item():
+            orders_count[order.order_name] = order.details_count
+
         #получается, нужно делать по ночным
         for first_dates in itertools.product(*start_dates):
             current_date = min(first_dates)
             is_night = False
-            #надо придумать, как остановить потом цикл
+            dates_order: dict[datetime.date, int] = {val: backet_order[i].order_name for i, val in enumerate(first_dates)}
+            current_orders_count: dict[str, dict[str, int]] = copy.deepcopy(orders_count)
+            
             while True:
 
                 
@@ -889,10 +921,13 @@ class ShiftCalc:
             for operation in self.shifts[detail]:
                 operation.clean_order(order_name=order_name)
 
-    def _start_order(self, details: set[str]) -> None:
+    def _start_order(self, details: set[str] | None) -> None:
 
         operation_checked: set(str) = set()
 
+        if details is None:
+            details = set(self.shifts.keys())
+        
         for detail in details:
             for operation in self.shifts[detail]:
                 if operation.operation_name not in operation_checked:
