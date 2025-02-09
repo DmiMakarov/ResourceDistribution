@@ -315,6 +315,9 @@ class Order:
     details_count: dict[str, int]
     date_range: tuple[datetime.date, datetime.date | None]
 
+    def __hash__(self):
+        return hash(self.order_name)
+
 
 class ShiftOperation:
 
@@ -849,19 +852,37 @@ class ShiftCalc:
 
         orders_count: dict[str, dict[str, int]] = {}
 
-        for order in backet_order.item():
-            orders_count[order.order_name] = order.details_count
+        for order in backet_order:
+            orders_count[order.order_name] = order
 
         #получается, нужно делать по ночным
         for first_dates in itertools.product(*start_dates):
             current_date = min(first_dates)
             is_night = False
-            dates_order: dict[datetime.date, int] = {val: backet_order[i].order_name for i, val in enumerate(first_dates)}
-            current_orders_count: dict[str, dict[str, int]] = copy.deepcopy(orders_count)
+            dates_order: dict[datetime.date, list[str]] = {}
+            #{val: backet_order[i].order_name for i, val in enumerate(first_dates)}
             
-            while True:
+            for i, val in enumerate(first_dates):
+                if val in backet_order:
+                    backet_order.append(backet_order[i].order_name)
+                else:
+                    backet_order = [backet_order[i].order_name]
+            
+            current_orders_count: dict[str, dict[str, int]] = {order.order_name: copy.deepcopy(order.details_count) for order in backet_order}
+            
+            self._start_order(details=None)
 
-                
+            while True:
+                if current_date in dates_order:
+                    for order_name in dates_order[current_date]:
+                        details_to_compute = list(orders_count[order_name].details_count.keys())
+                        self.__fill_operations(operations=orders_count[order_name].operations, 
+                                               input_count=orders_count[order_name].details_count,
+                                               details=details_to_compute)
+                        self.__fill_start(details_count=orders_count[order_name].details_count)
+                    
+                    ##default cycle to push forward operations
+
 
 
         #TODO make calc after start_date
@@ -1050,15 +1071,20 @@ class ShiftCalc:
                           operations: dict[str, pd.DataFrame],
                           input_count: dict[str, int],
                           details: list[str]) -> None:
+        # для каждого заказа эта скорость может быть своя
+        #поэтому надо переделать под detail:order:float
+        #но пока для нулевого приближения оставим так
+        #и вообще эта модель жолжна работать вообще по-другому
+        #или не факт, надо будет потом подумать
 
         for detail in details:
             for shift_operation in self.shifts[detail]:
                 if shift_operation.detail_per_hour.get(detail, None) is None:
                     shift_operation.detail_per_hour[detail] = input_count[detail] /  \
                                                                operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
-                else:
-                    shift_operation.detail_per_hour[detail] += input_count[detail] /  \
-                                                               operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
+                #else:
+                #    shift_operation.detail_per_hour[detail] += input_count[detail] /  \
+                #                                               operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
 
     def __fill_start(self,
                      details_count: dict[str, int]) -> None:
