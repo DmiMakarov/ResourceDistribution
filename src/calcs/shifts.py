@@ -4,11 +4,13 @@ Define ShiftOPeration class
 Main idea is to accumulate info about previous operation during one shift
 """
 import copy
+import tqdm 
 import datetime
 import itertools
 
 import numpy as np
 import pandas as pd
+
 
 from dataclasses import dataclass
 from enum import Enum
@@ -912,7 +914,7 @@ class ShiftCalc:
         min_dates: list[datetime.date] = []
 
         #получается, нужно делать по ночным
-        for first_dates in itertools.product(*start_dates):
+        for first_dates in tqdm.tqdm(itertools.product(*start_dates)):
 
             if len(first_dates) == 0:
                 continue
