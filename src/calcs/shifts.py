@@ -474,7 +474,7 @@ class ShiftOperation:
                 count_per_ops[i] = sum([value for order, value in val.items() if order in orders_night])
             else:
                 count_per_ops[i] = sum(val.values())
-            
+
             i += 1
 
         min_available_details = np.min(count_per_ops)
@@ -484,7 +484,7 @@ class ShiftOperation:
             if min_available_details / self.detail_per_hour[detail_name] < 11:
                 op: str = list(self.prev_operations[detail_name])[0]
                 orders: dict[str, int] =  copy.deepcopy(self.prev_operations[detail_name][op])
-                
+
                 for order in orders:
                     orders[order] = 0
 
@@ -508,7 +508,7 @@ class ShiftOperation:
             if not is_enough:
                 op: str = list(self.prev_operations[detail_name])[0]
                 orders: dict[str, int] =  copy.deepcopy(self.prev_operations[detail_name][op])
-                
+
                 for order in orders:
                     orders[order] = 0
 
@@ -544,7 +544,7 @@ class ShiftOperation:
         if not day_available and not night_available:
             op: str = list(self.prev_operations[detail_name])[0]
             orders: dict[str, int] =  copy.deepcopy(self.prev_operations[detail_name][op])
-                
+
             for order in orders:
                 orders[order] = 0
 
@@ -576,7 +576,7 @@ class ShiftOperation:
                 len_ -= 1
                 continue
 
-            used = min(count, available_details / len_)
+            used = min(count, np.ceil(available_details / len_))
 
             if order not in self.orders_fill_dates:
                 self.orders_fill_dates[order] = [(date, is_night, used / self.detail_per_hour[detail_name])]
@@ -644,7 +644,7 @@ class ShiftOperation:
         """Подтверждает заказ"""
         if len(self.tmp_fill_dates) > 0:
             self.fill_dates = copy.deepcopy(self.tmp_fill_dates)
-        
+
         self.tmp_fill_dates = []
 
         for detail in self.prev_operations:
@@ -852,7 +852,7 @@ class ShiftCalc:
         non_backet_before: list[Order] = orders[:start_index]
         non_backet_after = orders[last_index:]
 
-        nights_orders: set[str] = set([order.order_name for i, order in enumerate(orders) if order_types[i] == OrderType.REVERSE_WITH_NIGHT])
+        nights_orders: set[str] = set([order.order_name for i, order in enumerate(orders) if order_types[i] == OrderType.REVERSE_WITH_NIGHT or order_types[i] == OrderType.WITH_NIGHT])
 
         answ: dict[str, pd.DataFrame] = {}
         details_readiness: dict[str, pd.DataFrame] = {}
@@ -986,7 +986,7 @@ class ShiftCalc:
                                         if isinstance(self.shifts[detail][j].prev_operations[detail][operation.operation_name], int):
                                             self.shifts[detail][j].prev_operations[detail][operation.operation_name] = {order: order_count[order]}
                                         else:
-                                            if order in self.shifts[detail][j].prev_operations[detail][operation.operation_name]: 
+                                            if order in self.shifts[detail][j].prev_operations[detail][operation.operation_name]:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] += order_count[order]
                                             else:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] = order_count[order]
@@ -1005,7 +1005,7 @@ class ShiftCalc:
                         orders_to_delete.update(order)
                         count_empty += 1
 
-                        if (current_date - end_dates[backet_order_idxs[order]]).days > 0:
+                        if end_dates[backet_order_idxs[order]] is not None and (current_date - end_dates[backet_order_idxs[order]]).days > 0:
                             is_overfill = True
 
                 if is_overfill:
@@ -1032,24 +1032,26 @@ class ShiftCalc:
             if is_overfill:
                 continue
 
-            norm: int = sum([abs((current_end_dates[i] - end_dates[i]).days) for i in range(len(current_end_dates))])
+            norm: int = sum([abs((current_end_dates[i] - end_dates[i]).days) for i in range(len(current_end_dates)) if end_dates[i] is not None])
 
             if norm == 0:
                 min_delta = norm
                 min_dates = copy.deepcopy(first_dates)
                 break
 
-            if norm < min_delta:
+            if norm <= min_delta:
                 min_delta = norm
                 min_dates = copy.deepcopy(first_dates)
 
         #TODO start reverse calc with min_dates
         if len(backet_order) > 0:
+            backet_details_readiness: dict[str, dict[str, tuple]] = {}
+
             current_date = min(min_dates)
             is_night = False
             dates_order: dict[datetime.date, list[str]] = {}
 
-            for i, val in enumerate(first_dates):
+            for i, val in enumerate(min_dates):
                 if val in dates_order:
                     dates_order[val].append(backet_order[i].order_name)
                 else:
@@ -1088,7 +1090,7 @@ class ShiftCalc:
                 #Если есть хоть одно превышение, то следующий вариант
                 #Иначе смотрим метрику сумма модулей разностей
                 for detail in details:
-                    
+
 
                     prev_empty: bool = True
 
@@ -1100,12 +1102,24 @@ class ShiftCalc:
 
                         next_names: set[str] = operation.next_operations[detail]
 
-                        #cond: bool = (count > 0) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
-
                         if len(next_names) == 0:
                             for order in order_count:
                                 if order in current_orders_count:
                                     current_orders_count[order][detail] -= order_count[order]
+                        #cond: bool = (count > 0) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
+                        cond = (len(next_names) == 0) and ( operation.operation_name != "Слесарь по сборке|Упаковочная")
+                        cond = cond or (len(next_names) == 1 and next(iter(next_names)) == "Слесарь по сборке|Упаковочная")
+
+                        if cond:
+                            for order in order_count:
+                                if order_count[order] > 0:
+                                    if order in backet_details_readiness:
+                                        if detail in backet_details_readiness[order]:
+                                            backet_details_readiness[order][detail].append((current_date, is_night, order_count[order]))
+                                        else:
+                                            backet_details_readiness[order][detail] = [(current_date, is_night, order_count[order])]
+                                    else:
+                                        backet_details_readiness[order] = {detail: [(current_date, is_night, order_count[order])]}
 
                         for op_name in next_names:
                             for j in range(i + 1, len(self.shifts[detail])):
@@ -1114,7 +1128,7 @@ class ShiftCalc:
                                         if isinstance(self.shifts[detail][j].prev_operations[detail][operation.operation_name], int):
                                             self.shifts[detail][j].prev_operations[detail][operation.operation_name] = {order: order_count[order]}
                                         else:
-                                            if order in self.shifts[detail][j].prev_operations[detail][operation.operation_name]: 
+                                            if order in self.shifts[detail][j].prev_operations[detail][operation.operation_name]:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] += order_count[order]
                                             else:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] = order_count[order]
@@ -1152,6 +1166,7 @@ class ShiftCalc:
         for order in backet_order:
             details = set(order.details_count.keys())
             self._approve_order(details=details)
+            details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=backet_details_readiness[order.order_name])
             answ[order.order_name] = self.__prepare_answ(details=list(details), order_name=order.order_name)
 
         if len(non_backet_after) > 0:

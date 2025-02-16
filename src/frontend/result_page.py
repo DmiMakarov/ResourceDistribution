@@ -83,12 +83,12 @@ def delete_calc():
             os.remove(path=f"{path}/{file}/shifts.xlsx")
         except OSError:
             pass
-        
+
         try:
             os.remove(path=f"{path}/{file}/readiness.xlsx")
         except OSError:
             pass
-        
+
         Path.rmdir(f"{path}/{file}")
 
     with Path("./data/results/dates.json").open("w") as file:
@@ -96,7 +96,7 @@ def delete_calc():
 
     with Path("./data/results/last.json").open("w") as file:
         json.dump([], file)
-    
+
     with Path("./data/results/orders.json").open("w") as file:
         json.dump({}, file)
 
@@ -116,7 +116,6 @@ with st.container():
                                                    options=get_available_options(st.session_state.calc_result_df),
                                                    key=st.session_state.calc_result_df)
 
-with st.container():
     if st.session_state.calc_result_df is not None:
         input_: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx", sheet_name=None)
         operations: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx", sheet_name=None)
@@ -144,7 +143,7 @@ with st.container():
 
             st.write(f"## Конфигурация заказа {order_name}")
             operations[order_name]['Time'] = np.round(operations[order_name]['Time'], 1)
-            
+
             st.markdown(data_map[str(st.session_state.calc_result_df)][order_name], unsafe_allow_html=True)
             st.dataframe(data=input_[order_name], key=st.session_state.calc_result_df)
 
@@ -175,7 +174,7 @@ with st.container():
             st.write(f"## Конфигурация заказа")
             operations["Итог"]['Time'] = np.round(operations["Итог"]['Time'], 1)
             st.dataframe(data=input_["Итог"], key=st.session_state.calc_result_df)
-        
+
             st.write("## Суммарное количество нормо-часов операций")
             st.dataframe(data=operations["Итог"], key=st.session_state.calc_result_df)
             st.download_button(label='Скачать',
@@ -189,4 +188,4 @@ with st.container():
                                data=to_excel(shifts["Итог"]) ,
                                file_name= 'shiftss.xlsx',
                                    key="shift_total")
-        
+
