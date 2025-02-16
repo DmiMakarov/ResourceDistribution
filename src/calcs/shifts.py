@@ -540,10 +540,12 @@ class ShiftOperation:
                 self.tmp_fill_dates.append(tmp_val)
 
         #по идее с нескольких источников должно заполняться равномерн, то есть ноль тогда, когда везде ноль
-        
+
         op, orders = self.prev_operations[detail_name].items()[0]
         ordered_orders = dict(sorted(orders.items(), key=lambda item: item[1]))
-        
+        len_ = len(ordered_orders)
+        available_details = details_in_this_date
+
         for order, count in ordered_orders.items():
             if is_night and order not in orders_night:
                 len_ -= 1
@@ -559,7 +561,7 @@ class ShiftOperation:
             ordered_orders[order] -= used
             available_details -= used
             len_ -= 1
-        
+
         details_in_this_date_answ: dict[str, int] = {}
 
         for key, val in ordered_orders.items():
@@ -571,7 +573,7 @@ class ShiftOperation:
         is_empty = True
 
         for _, orders in self.prev_operations[detail_name].items():
-            
+
             for order, count in orders.items():
                 if count > 0:
                     is_empty = False
@@ -799,26 +801,35 @@ class ShiftCalc:
                     start_index = i
 
                 last_index = i + 1
-                days_before: int = np.ceil(sum([val * orders[i].details_count[key] for key, val in count_map.items()])) * len(orders)
-                start_dates.append([orders[i].date_range[1] - datetime.timedelta(days=days_before - i) for i in range(days_before)])
+                days_before: int = np.ceil(sum([val * orders[i].details_count[key] for key, val in count_map.items() if key in orders[i].details_count])) * len(orders)
+                start_dates.append([orders[i].date_range[1] - datetime.timedelta(days=days_before - j) for j in range(int(days_before))])
                 end_dates.append(orders[i].date_range[1])
             else:
                 start_dates.append([orders[i].date_range[0]])
                 end_dates.append(orders[i].date_range[1])
 
+        if last_index == -1:
+            start_index = 0
+            last_index = 0
+
         start_dates = start_dates[start_index:last_index]
         end_dates = end_dates[start_index:last_index]
 
-        if last_index == -1:
-            raise ValueError("There are no any reverse orders")
-
         backet_order: list[Order] = orders[start_index:last_index]
-        non_backet: list[Order] = orders[:start_index]
-        non_backet.extend(orders[last_index:])
+        non_backet_before: list[Order] = orders[:start_index]
+        non_backet_after = orders[last_index:]
 
         nights_orders: set[str] = set([order.order_name for i, order in enumerate(orders) if order_types[i] == OrderType.REVERSE_WITH_NIGHT])
 
-        #TODO make calc before start_date
+        answ: dict[str, pd.DataFrame] = {}
+        details_readiness: dict[str, pd.DataFrame] = {}
+
+        if len(non_backet_before) > 0:
+            answ, details_readiness = self.calc(orders=non_backet_before,
+                                                   order_types=order_types[:start_index],
+                                                   answ=answ,
+                                                   details_readiness=details_readiness,
+                                                   clean_all=False)
 
         #Для расчёта таким способом надо при current_date == start_date производить инициализацию start_pos
         #а дальше расчёт как обычно
@@ -830,22 +841,22 @@ class ShiftCalc:
 
         #какие вообще тут есть циклы
         #1. Цикл по наборам дат (перебор)
-        #2. Цикл по дате 
+        #2. Цикл по дате
         #3. Цикл по заказам
         #4. Цикл по детялям
 
         #вложенность циклов:
         #1. Цикл по наборам дат (перебор)
-        #2. Цикл по дате 
+        #2. Цикл по дате
         #3. Цикл по деталям
         #Цикл по заказам неявно учтём в вычислении next для shift
-        #Что делать с деталями? Наверное, стоит оставить приоритет исполнения одной детали. 
+        #Что делать с деталями? Наверное, стоит оставить приоритет исполнения одной детали.
         #С точки зрения производства - это самое логичное, потому что сначала работник будет делать однообразную работу. Get it?
 
         #Нам ещё из этого цикла надо понять, когда какой заказ закончился
         #В next мы можем выкидывать не просто quajtity, Но {"order": quantity}
-        # Будет словарь {order: {detail: quantity}}, от которого будет браться информация о 
-        # Надо посмотреть, хешбл ли пандасовский timestamp, if yes, then i need to construct 
+        # Будет словарь {order: {detail: quantity}}, от которого будет браться информация о
+        # Надо посмотреть, хешбл ли пандасовский timestamp, if yes, then i need to construct
         # dict {data: order} and then i can insert details from previous dict
 
         #Чтобы начать новый расчёт надо:
@@ -858,30 +869,34 @@ class ShiftCalc:
 
         for order in backet_order:
             orders_count[order.order_name] = order
-            
+
             for detail_ in order.details_count:
-                details.update(detail_)
-        
+                details.add(detail_)
+
         current_end_dates: list[datetime.date] = [datetime.date(year=1974, day=27, month=2)] * len(end_dates)
-        backet_order_idxs: dict[str, int] = {order.name: i for i, order in enumerate(backet_order)}
+        backet_order_idxs: dict[str, int] = {order.order_name: i for i, order in enumerate(backet_order)}
         min_delta = 10000000
         min_dates: list[datetime.date] = []
 
         #получается, нужно делать по ночным
         for first_dates in itertools.product(*start_dates):
+
+            if len(first_dates) == 0:
+                continue
+
             current_date = min(first_dates)
             is_night = False
             dates_order: dict[datetime.date, list[str]] = {}
             #{val: backet_order[i].order_name for i, val in enumerate(first_dates)}
-            
+
             for i, val in enumerate(first_dates):
                 if val in dates_order:
                     dates_order[val].append(backet_order[i].order_name)
                 else:
                     dates_order[val] = [backet_order[i].order_name]
-            
+
             current_orders_count: dict[str, dict[str, int]] = {order.order_name: copy.deepcopy(order.details_count) for order in backet_order}
-            
+
             self._start_order(details=None)
             is_overfill: bool = False
             count_empty : int = 0
@@ -895,17 +910,17 @@ class ShiftCalc:
                 if current_date in dates_order:
                     for order_name in dates_order[current_date]:
                         details_to_compute = list(orders_count[order_name].details_count.keys())
-                        self.__fill_operations(operations=orders_count[order_name].operations, 
+                        self.__fill_operations(operations=orders_count[order_name].operations,
                                                input_count=orders_count[order_name].details_count,
                                                details=details_to_compute)
-                        self.__fill_start(details_count=orders_count[order_name].details_count)
-                    
+                        self.__fill_start(details_count=orders_count[order_name].details_count, order_name=order_name)
+
                     del dates_order[current_date]
                     ##default cycle to push forward operations
 
                 #что делать:
                 #пройти по всем деталям
-                #для всех деталей протолкнуть вперёд 
+                #для всех деталей протолкнуть вперёд
                 #если конец - вычесть из счётчика current_orders_count
                 #проверить, пустой ли заказ. Если пустой, записать дату, как дату окончания
                 #если все пустые, тогда остановить, посчитать разницу.
@@ -919,15 +934,15 @@ class ShiftCalc:
                     prev_empty: bool = True
 
                     for i, operation in enumerate(self.shifts[detail]):
-                        order_count, prev_empty = operation.next_revert(date=date=current_date, is_night=is_night,
+                        order_count, prev_empty = operation.next_revert(date=current_date, is_night=is_night,
                                                                         prev_empty=prev_empty, detail_name=detail,
                                                                         orders_night=nights_orders)
-                                                
+
 
                         next_names: set[str] = operation.next_operations[detail]
 
                         #cond: bool = (count > 0) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
-                        
+
                         if len(next_names) == 0:
                             for order in order_count:
                                 if order in current_orders_count:
@@ -947,7 +962,7 @@ class ShiftCalc:
 
                 for order, details_count in current_orders_count.items():
                     count_ = sum([count_detail for _, count_detail in details_count])
-                    
+
                     if count_ == 0:
                         current_end_dates[backet_order_idxs[order]] = current_date
                         orders_to_delete.update(order)
@@ -970,10 +985,10 @@ class ShiftCalc:
 
                     if not is_night:
                         current_date += datetime.timedelta(days=1)
-    
+
                 else:
                     current_date += datetime.timedelta(days=1)
-            
+
             if is_overfill:
                 continue
 
@@ -983,30 +998,143 @@ class ShiftCalc:
                 min_delta = norm
                 min_dates = copy.deepcopy(first_dates)
                 break
-            
+
             if norm < min_delta:
                 min_delta = norm
                 min_dates = copy.deepcopy(first_dates)
 
+            for order_name in backet_order_idxs:
+                self._clean_order(order_name=order.order_name)
+
         #TODO start reverse calc with min_dates
+        current_date = min(min_dates)
+        is_night = False
+        dates_order: dict[datetime.date, list[str]] = {}
+
+        for i, val in enumerate(first_dates):
+            if val in dates_order:
+                dates_order[val].append(backet_order[i].order_name)
+            else:
+                dates_order[val] = [backet_order[i].order_name]
+
+        current_orders_count: dict[str, dict[str, int]] = {order.order_name: copy.deepcopy(order.details_count) for order in backet_order}
+
+        self._start_order(details=None)
+        is_overfill: bool = False
+        count_empty : int = 0
+
+        is_fill: dict[str, bool] = {}
+
+        for detail in details:
+            is_fill[detail] = False
+
+        while True:
+            if current_date in dates_order:
+                for order_name in dates_order[current_date]:
+                    details_to_compute = list(orders_count[order_name].details_count.keys())
+                    self.__fill_operations(operations=orders_count[order_name].operations,
+                                           input_count=orders_count[order_name].details_count,
+                                           details=details_to_compute)
+                    self.__fill_start(details_count=orders_count[order_name].details_count, order_name=order_name)
+
+                del dates_order[current_date]
+                    ##default cycle to push forward operations
+
+                #что делать:
+                #пройти по всем деталям
+                #для всех деталей протолкнуть вперёд
+                #если конец - вычесть из счётчика current_orders_count
+                #проверить, пустой ли заказ. Если пустой, записать дату, как дату окончания
+                #если все пустые, тогда остановить, посчитать разницу.
+                #Если все нули - остановить все циклы, записать как решение
+                #Если есть хоть одно превышение, то следующий вариант
+                #Иначе смотрим метрику сумма модулей разностей
+            for detail in details:
+                if is_fill[detail]:
+                    continue
+
+                prev_empty: bool = True
+
+                for i, operation in enumerate(self.shifts[detail]):
+                    order_count, prev_empty = operation.next_revert(date=current_date, is_night=is_night,
+                                                                    prev_empty=prev_empty, detail_name=detail,
+                                                                    orders_night=nights_orders)
 
 
-        #TODO make calc after start_date
+                    next_names: set[str] = operation.next_operations[detail]
+
+                        #cond: bool = (count > 0) and len(next_names) == 0 and operation.operation_name != "Слесарь по сборке|Упаковочная"
+
+                    if len(next_names) == 0:
+                        for order in order_count:
+                            if order in current_orders_count:
+                                current_orders_count[order][detail] -= order_count[order]
+
+                    for op_name in next_names:
+                        for j in range(i + 1, len(self.shifts[detail])):
+                            if self.shifts[detail][j].operation_name == op_name:
+                                for order in order_count:
+                                    self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] += order_count[order]
+
+                if prev_empty:
+                    is_fill[detail] = True
+
+                #проверка заказа на пустоту:
+            orders_to_delete: set[str] = set()
+
+            for order, details_count in current_orders_count.items():
+                count_ = sum([count_detail for _, count_detail in details_count])
+
+                if count_ == 0:
+                    current_end_dates[backet_order_idxs[order]] = current_date
+                    orders_to_delete.update(order)
+                    count_empty += 1
+
+
+            for order in orders_to_delete:
+                del current_orders_count[order]
+
+            if count_empty == len(current_end_dates):
+                break
+
+            if len(nights_orders) > 0:
+                is_night = not is_night
+
+                if not is_night:
+                    current_date += datetime.timedelta(days=1)
+
+            else:
+                current_date += datetime.timedelta(days=1)
 
 
 
+        if len(non_backet_after) > 0:
+            answ, details_readiness = self.calc(orders=non_backet_after,
+                                                   order_types=order_types[:start_index],
+                                                   answ=answ,
+                                                   details_readiness=details_readiness,
+                                                   clean_all=False)
+
+        answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
+        self.clear()
+
+        return answ, details_readiness
 
     def calc(self,
              orders: list[Order],
              order_types: list[OrderType],
+             answ: dict[str, pd.DataFrame] | None = None,
+             details_readiness: dict[str, pd.DataFrame] | None = None,
              clean_all: bool = True) -> tuple[dict[str, pd.DataFrame],
-                                                    dict[str, pd.DataFrame]]:
+                                              dict[str, pd.DataFrame]]:
 
             details: set[str] = set()
 
-            answ: dict[str, pd.DataFrame] = {}
+            if answ is None:
+                answ: dict[str, pd.DataFrame] = {}
 
-            details_readiness: dict[str, pd.dataFrame] = {}
+            if details_readiness is None:
+                details_readiness: dict[str, pd.dataFrame] = {}
 
             for order_type, order in zip(order_types, orders):
 
@@ -1034,15 +1162,13 @@ class ShiftCalc:
                 answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=order.order_name)
                 details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=details_readiness_)
 
-            answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
-
             if clean_all:
+                answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
                 self.clear()
 
             return answ, details_readiness
 
-    def _clean_order(self,
-                    order_name: str) -> None:
+    def _clean_order(self, order_name: str) -> None:
 
         for detail in self.shifts:
             for operation in self.shifts[detail]:
@@ -1054,7 +1180,7 @@ class ShiftCalc:
 
         if details is None:
             details = set(self.shifts.keys())
-        
+
         for detail in details:
             for operation in self.shifts[detail]:
                 if operation.operation_name not in operation_checked:
@@ -1193,15 +1319,23 @@ class ShiftCalc:
                 #                                               operations[detail][operations[detail]["Operation"] == shift_operation.operation_name.split("|")[1]]["Time"].to_numpy()[0]
 
     def __fill_start(self,
-                     details_count: dict[str, int]) -> None:
+                     details_count: dict[str, int],
+                     order_name: str | None = None) -> None:
         #fiil start with detail count
+        #Assumtion that order name inserts full in one date
+
         for detail in details_count:
             start_ops_: list[str] = START_OPS[detail]
 
             for start_op in start_ops_:
                 for op in self.shifts[detail]:
                     if op.operation_name == start_op:
-                        op.prev_operations[detail]["Start"] += details_count[detail]
+
+                        if order_name is None:
+                            op.prev_operations[detail]["Start"] += details_count[detail]
+                        else:
+                            tmp_: dict[str, int] = {order_name: details_count[detail]}
+                            op.prev_operations[detail]["Start"] = tmp_
 
                         break
 

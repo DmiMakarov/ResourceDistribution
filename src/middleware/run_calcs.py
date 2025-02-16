@@ -14,7 +14,7 @@ logger: logging.Logger = logging.getLogger()
 
 def run_calcs(request_id: int,
               input_details: dict[str, tuple[pd.DataFrame, str, tuple[datetime.date, datetime.date]]]) -> None:
- 
+
     table_time: TableTime = TableTime()
     orders: list[tuple[Order, int]] = []
     orders_type: list[OrderType] = []
@@ -54,8 +54,8 @@ def run_calcs(request_id: int,
         for name, df in input_to_write.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
-    shifts, order_readiness = shift_calc.calc(orders=[order for order, _ in orders], order_types=orders_type)
-    
+    shifts, order_readiness = shift_calc.backet_calc(orders=[order for order, _ in orders], order_types=orders_type)
+
     for key in order_readiness:
         order_readiness[key] = order_readiness[key].replace(details_to_details)
 
