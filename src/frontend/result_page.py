@@ -143,7 +143,7 @@ def column_format_df(df: pd.DataFrame):
     column_to_detach: set[str] =  set(["Сотрудник", "Операция", "Количество"])
     columns: set[str] = set(df.columns) - column_to_detach
     
-    col1, col2 = st.columns([0.25, 0.75])
+    col1, col2 = st.columns([0.3, 0.7])
     col1.dataframe(data=df[list(column_to_detach)])
     col2.dataframe(data=df[list(columns)].style.applymap(color_survived).format(precision=1), hide_index=True)
                    
@@ -193,8 +193,9 @@ with st.container():
                                file_name= 'operations.xlsx',
                                key=f"operation_{order_name}")
             st.write(f"## Смены для заказа {order_name}")
-            st.dataframe(data=shifts[order_name].style.applymap(color_survived).format(precision=1),
-                         key=st.session_state.calc_result_df)
+            #st.dataframe(data=shifts[order_name].style.applymap(color_survived).format(precision=1),
+            #             key=st.session_state.calc_result_df)
+            column_format_df(df=shifts[order_name])
             st.download_button(label='Скачать',
                                data=to_excel(shifts[order_name]) ,
                                file_name= 'shifts.xlsx',
