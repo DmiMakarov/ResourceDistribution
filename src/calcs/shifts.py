@@ -1165,11 +1165,11 @@ class ShiftCalc:
                 else:
                     current_date += datetime.timedelta(days=1)
 
-        for order in backet_order:
+        for i, order in enumerate(backet_order):
             details = set(order.details_count.keys())
             self._approve_order(details=details)
-            details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=backet_details_readiness[order.order_name])
-            answ[order.order_name] = self.__prepare_answ(details=list(details), order_name=order.order_name)
+            details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=backet_details_readiness[order.order_name], orders_types=[order_types[start_index + i]])
+            answ[order.order_name] = self.__prepare_answ(details=list(details), orders_types=[order_types[start_index + i]], order_name=order.order_name)
 
         if len(non_backet_after) > 0:
             answ, details_readiness = self.calc(orders=non_backet_after,
@@ -1178,7 +1178,7 @@ class ShiftCalc:
                                                    details_readiness=details_readiness,
                                                    clean_all=False)
 
-        answ["Итог"] = self.__prepare_answ(details=list(all_details), order_name=None)
+        answ["Итог"] = self.__prepare_answ(details=list(all_details), orders_types=order_types, order_name=None)
         self.clear()
 
         return answ, details_readiness
@@ -1222,11 +1222,11 @@ class ShiftCalc:
                 self._approve_order(details=order_details)
 
                 details.update(order_details)
-                answ[order.order_name] = self.__prepare_answ(details=order_details, order_name=order.order_name)
-                details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=details_readiness_)
+                answ[order.order_name] = self.__prepare_answ(details=order_details, orders_types=[order_type], order_name=order.order_name)
+                details_readiness[order.order_name] = self.__prepare_details_readiness(details_readiness=details_readiness_, orders_types=[order_type])
 
             if clean_all:
-                answ["Итог"] = self.__prepare_answ(details=details, order_name=None)
+                answ["Итог"] = self.__prepare_answ(details=details, orders_types=order_types, order_name=None)
                 self.clear()
 
             return answ, details_readiness
@@ -1405,7 +1405,14 @@ class ShiftCalc:
 
                         break
 
-    def __prepare_answ(self, details: list[str], order_name: str | None = None) -> pd.DataFrame:
+    def __prepare_answ(self, details: list[str], orders_types: list[OrderType], order_name: str | None = None) -> pd.DataFrame:
+
+        has_night: bool = False
+        
+        for order_type in orders_types:
+            if order_type == OrderType.REVERSE_WITH_NIGHT or order_type == OrderType.WITH_NIGHT:
+                has_night = True
+                break
 
         operations_checked: set[str] = set()
         operations_params: dict[str, list] = {"Сотрудник": [],
@@ -1432,10 +1439,15 @@ class ShiftCalc:
                         max_date = max(date, max_date)
 
         staff_table = pd.DataFrame(operations_params)
-        base_range = [(min_date + datetime.timedelta(days=i)).strftime("%d-%m-%Y") for i in range((max_date - min_date).days + 1)]
-        columns: list = [[date + " День", date + " Ночь"] \
-                          for date in base_range]
-        columns = [item for row in columns for item in row]
+        base_range = [(min_date + datetime.timedelta(days=i)).strftime("%m-%d") for i in range((max_date - min_date).days + 1)]
+        
+        if has_night:
+            columns: list = [[date + " День", date + " Ночь"] \
+                              for date in base_range]
+            columns = [item for row in columns for item in row]
+        else:
+            columns: list = base_range
+            
         dates = pd.DataFrame(columns=columns, dtype=float)
         merged = pd.concat([staff_table, dates]).fillna(0.0)
 
@@ -1446,9 +1458,12 @@ class ShiftCalc:
 
             for date, is_night, count in dates:
                 if is_night:
-                    key: str = date.strftime("%d-%m-%Y") + " Ночь"
+                    key: str = date.strftime("%m-%d") + " Ночь"
                 else:
-                    key = date.strftime("%d-%m-%Y") + " День"
+                    if has_night:
+                        key = date.strftime("%m-%d") + " День"
+                    else:
+                        key = date.strftime("%m-%d")
 
                 if tmp.get(key) is None:
                     tmp[key] = count
@@ -1456,7 +1471,6 @@ class ShiftCalc:
                     tmp[key] += count
 
             new_op_dates[val] = tmp
-
 
 
         for val, dates in new_op_dates.items():
@@ -1468,8 +1482,15 @@ class ShiftCalc:
 
         return merged
 
-    def __prepare_details_readiness(self, details_readiness: dict[str, tuple]) -> pd.DataFrame:
+    def __prepare_details_readiness(self, details_readiness: dict[str, tuple], orders_types: list[OrderType]) -> pd.DataFrame:
         """a"""
+        has_night: bool = False
+
+        for order_type in orders_types:
+            if order_type == OrderType.WITH_NIGHT or order_type == OrderType.REVERSE_WITH_NIGHT:
+                has_night = True
+                break
+
         min_date: datetime.date = datetime.date(2777, 1, 1)
         max_date: datetime.date = datetime.date(1977, 1, 1)
 
@@ -1480,10 +1501,14 @@ class ShiftCalc:
                 max_date = val[-1][0]
 
         details: pd.DataFrame = pd.DataFrame({"Изделие" : list(details_readiness.keys())})
-        base_range = [(min_date + datetime.timedelta(days=i)).strftime("%d-%m-%Y") for i in range((max_date - min_date).days + 1)]
-        columns: list = [[date + " День", date + " Ночь"] \
-                          for date in base_range]
-        columns = [item for row in columns for item in row]
+        base_range = [(min_date + datetime.timedelta(days=i)).strftime("%m-%d") for i in range((max_date - min_date).days + 1)]
+        if has_night:    
+            columns: list = [[date + " День", date + " Ночь"] \
+                             for date in base_range]
+            columns = [item for row in columns for item in row]
+        else:
+            columns = base_range
+
         dates = pd.DataFrame(columns=columns, dtype=float)
         merged = pd.concat([details, dates]).fillna(0)
 
@@ -1493,9 +1518,12 @@ class ShiftCalc:
 
             for date_, is_night_, count in val:
                 if is_night_:
-                    key_: str = date_.strftime("%d-%m-%Y") + " Ночь"
+                    key_: str = date_.strftime("%m-%d") + " Ночь"
                 else:
-                    key_ = date_.strftime("%d-%m-%Y") + " День"
+                    if has_night:
+                        key_ = date_.strftime("%m-%d") + " День"
+                    else:
+                        key_ = date_.strftime("%m-%d")
 
                 dates_.append(key_)
 

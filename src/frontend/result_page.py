@@ -4,15 +4,23 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import streamlit as st
+from st_aggrid import AgGrid
 from streamlit_javascript import st_javascript
 from pathlib import Path
 import json
 
 st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
 if st_theme == "dark":
-    base_color: str = "black"
-else:
     base_color: str = "white"
+    zero_color: str = "#0e1117"
+else:
+    base_color: str = "#0e1117"
+    zero_color: str = "white"
+    
+if st_theme == "dark":
+    base_font_color: str = "white"
+else:
+    base_font_color: str = "black"
 
 def to_excel(df):
     output = BytesIO()
@@ -27,11 +35,11 @@ def to_excel(df):
 
     return processed_data
 
-st.markdown("Рассчёт производственного плана")
-st.sidebar.markdown("Результаты рассчётов производственного плана. Результаты включают в себя суммарное количество нормо-часов на операцию и распределение смен по дням")
+#st.markdown("Рассчёт производственного плана")
+#st.sidebar.markdown("Результаты рассчётов производственного плана. Результаты включают в себя суммарное количество нормо-часов на операцию и распределение смен по дням")
 
-if "calc_result" not in st.session_state:
-    st.session_state.calc_result = 0
+if "calc_result__" not in st.session_state:
+    st.session_state.calc_result__ = "A" 
 
 if "calc_result_df" not in st.session_state:
     st.session_state.calc_result_df = None
@@ -55,14 +63,16 @@ def get_available_options(order_num: int) -> list[str]:
 
 def color_survived(val):
     color = base_color
+    #font_color = base_font_color
 
     if isinstance(val, float) | isinstance(val , int):
-        if val == 0.0:
-            color = 'red'
+        if val != 0.0:
+            color = base_color
         else:
-            color = 'green'
+            color = zero_color
 
-    return f'background-color: {color}'
+    #return {f'background-color: {color};', f'color: {font_color}'}
+    return f'color: {color}'
 
 def delete_calc():
     path: str = "./data/results"
@@ -105,16 +115,45 @@ with st.container():
 
 
 with st.container():
-    st.session_state.calc_result_df = st.selectbox(label="Номер рассчёта",
+    st.session_state.calc_result_df = st.selectbox(label="Номер расчёта",
                                                    options=get_avaliable_calcs(),
-                                                   key=st.session_state.calc_result)
+                                                   key=st.session_state.calc_result__)
+
+def aggrid_format_df(df: pd.DataFrame):
+    column_to_detach: set[str] =  set(["Сотрудник", "Операция"])
+    columns_def: list[dict] = []
+
+    for column in df.columns:
+        if column in column_to_detach:
+            columns_def.append({"headerName": column, "field": column, "pinned": "left"})
+        else:
+            columns_def.append({"headerName": column, "field": column})
+
+
+    gridOptions: dict = {
+        'defaultColDef': {
+            'resizable': True
+        },
+        'columnDefs': columns_def
+    }
+
+    AgGrid(df, gridOptions=gridOptions)
+
+def column_format_df(df: pd.DataFrame):
+    column_to_detach: set[str] =  set(["Сотрудник", "Операция", "Количество"])
+    columns: set[str] = set(df.columns) - column_to_detach
+    
+    col1, col2 = st.columns([0.25, 0.75])
+    col1.dataframe(data=df[list(column_to_detach)])
+    col2.dataframe(data=df[list(columns)].style.applymap(color_survived).format(precision=1), hide_index=True)
+                   
 
 with st.container():
 
     if st.session_state.calc_result_df is not None:
         st.session_state.calc_order = st.selectbox(label="Выберете заказ",
-                                                   options=get_available_options(st.session_state.calc_result_df),
-                                                   key=st.session_state.calc_result_df)
+                                                     options=get_available_options(st.session_state.calc_result_df),
+                                                     key=st.session_state.calc_result_df)
 
     if st.session_state.calc_result_df is not None:
         input_: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx", sheet_name=None)
@@ -182,8 +221,10 @@ with st.container():
                                file_name= 'operations.xlsx',
                                key="operation_total")
             st.write("## Итоговые смены")
-            st.dataframe(data=shifts["Итог"].style.applymap(color_survived).format(precision=1),
-                         key=st.session_state.calc_result_df)
+            #st.dataframe(data=shifts["Итог"].style.applymap(color_survived).format(precision=1),
+            #             key=st.session_state.calc_result_df)
+            #aggrid_format_df(df=shifts["Итог"].style.applymap(color_survived).format(precision=1))
+            column_format_df(df=shifts["Итог"])
             st.download_button(label='Скачать',
                                data=to_excel(shifts["Итог"]) ,
                                file_name= 'shiftss.xlsx',

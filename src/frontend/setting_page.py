@@ -13,8 +13,8 @@ from middleware.run_calcs import run_calcs
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-st.markdown("Загрузка данных")
-st.sidebar.markdown("В этом разделе определяются параметры расчёта, такие как: изделия, которые следует произвести, их количество, временной промежуток расчёта.")
+#st.markdown("Загрузка данных")
+#st.sidebar.markdown("В этом разделе определяются параметры расчёта, такие как: изделия, которые следует произвести, их количество, временной промежуток расчёта.")
 
 if "edit_table" not in st.session_state:
     st.session_state.edit_table = 0
