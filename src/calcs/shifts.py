@@ -102,11 +102,13 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  },
              "next_operations": {
                                  "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx":
-                                 {"Слесарь по сборке|Упаковочная"},
+                                 {},
+                                 #{"Слесарь по сборке|Упаковочная"},
                                  "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx":
                                  {},
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
-                                 {"Слесарь по сборке|Упаковочная"}
+                                 #{"Слесарь по сборке|Упаковочная"}
+                                 {}
                                 }
             },
             "Слесарь по сборке|Упаковочная":
@@ -461,7 +463,7 @@ class ShiftOperation:
     def next_revert(self,
                     date: datetime.date,
                     is_night: bool,
-                    prev_empty: bool,
+                    prev_empty: dict[str, bool],
                     detail_name: str,
                     orders_night: set[str]) -> tuple[dict[str, bool], bool]:
 
@@ -471,17 +473,31 @@ class ShiftOperation:
         count_per_ops = np.zeros(len(self.prev_operations[detail_name]))
         i = 0
         #val: {"order": count}
+        orders_to_count_prev: list[str] = []
         for _, val in self.prev_operations[detail_name].items():
             if is_night:
                 count_per_ops[i] = sum([value for order, value in val.items() if order in orders_night])
+                for order in val:
+                    if val[order] > 0 and order in orders_night:
+                        orders_to_count_prev.append(order)
             else:
                 count_per_ops[i] = sum(val.values())
+                for order in val:
+                    if val[order] > 0:
+                        orders_to_count_prev.append(order)
 
             i += 1
 
         min_available_details = np.min(count_per_ops)
 
-        if not prev_empty:
+        total_prev_empty: bool = True
+
+        for order in orders_to_count_prev:
+            total_prev_empty = total_prev_empty and prev_empty[order]
+            if not total_prev_empty:
+                break
+
+        if not total_prev_empty:
 
             if min_available_details / self.detail_per_hour[detail_name] < 11:
                 op: str = list(self.prev_operations[detail_name])[0]
@@ -490,13 +506,18 @@ class ShiftOperation:
                 for order in orders:
                     orders[order] = 0
 
-                return orders, False
+                for name in orders_to_count_prev:
+                    prev_empty[name] = False
+
+                return orders, prev_empty
 
             is_enough: bool = True
 
             for op_name in self.prev_operations[detail_name]:
                 if op_name == "Start":
-                    prev_empty = True
+
+                    for order in prev_empty:
+                        prev_empty[order] = True
                     break
                 # если требуемое количество деталей для 12 делается меньше,
                 # чем за 6 часов, то надо запускать
@@ -514,7 +535,10 @@ class ShiftOperation:
                 for order in orders:
                     orders[order] = 0
 
-                return orders, False
+                for name in orders_to_count_prev:
+                    prev_empty[name] = False
+
+                return orders, prev_empty
 
         day_available: bool = not is_night
         night_available: bool = is_night
@@ -550,8 +574,10 @@ class ShiftOperation:
             for order in orders:
                 orders[order] = 0
 
+            for name in orders_to_count_prev:
+                    prev_empty[name] = False
 
-            return orders, False
+            return orders, prev_empty
 
         details_in_this_date: int = int(min([self.detail_per_hour[detail_name] * 11 * (day_available + night_available),
                                             min_available_details, hours_available * self.detail_per_hour[detail_name]]))
@@ -597,19 +623,19 @@ class ShiftOperation:
         for op in self.prev_operations[detail_name]:
             self.prev_operations[detail_name][op] = copy.deepcopy(ordered_orders)
 
-        is_empty = True
+        is_empty: dict[str, bool] = {name: True for name in prev_empty}
 
         for _, orders in self.prev_operations[detail_name].items():
 
             for order, count in orders.items():
                 if count > 0:
-                    is_empty = False
+                    is_empty[order] = False
                     break
 
-            if not is_empty:
-                break
+        for name in prev_empty:
+            prev_empty[name] = prev_empty[name] and is_empty[name]
 
-        return details_in_this_date_answ, prev_empty and is_empty
+        return details_in_this_date_answ, prev_empty
 
     def clear(self)-> None:
         """Используется, чтобы очистить результаты всех расчётов"""
@@ -807,6 +833,11 @@ class ShiftCalc:
             order.date_range = (start_date_bs - datetime.timedelta(days=days), date_end)
 
         return details_readiness
+    
+    def __set_start_to_emprty_dict(self, details: set[str]):
+        for detail in details:
+            if "Start" in self.shifts[detail][0].prev_operations[detail]:
+                self.shifts[detail][0].prev_operations[detail]["Start"] = {}
 
     def backet_calc(self,
                     orders: list[Order],
@@ -818,12 +849,17 @@ class ShiftCalc:
         end_dates: list[datetime.date] = []
 
         count_map: dict[str, float] = {
-            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 1.5,
-            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.5,
+            "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": 0.8,
+            "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": 0.2,
             "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": 1.5
         }
 
         all_details: set[str] = set()
+
+
+        #12.26 02-18
+        #2 закказа по 20 дверей + кормушки
+        #
 
         for order in orders:
             for detail_ in order.details_count:
@@ -914,6 +950,7 @@ class ShiftCalc:
         min_dates: list[datetime.date] = []
 
         #получается, нужно делать по ночным
+        print(len(list(tqdm.tqdm(itertools.product(*start_dates)))))
         for first_dates in tqdm.tqdm(itertools.product(*start_dates)):
 
             if len(first_dates) == 0:
@@ -941,6 +978,8 @@ class ShiftCalc:
             for detail in details:
                 is_fill[detail] = False
 
+            self.__set_start_to_emprty_dict(details=details)
+
             while True:
                 if current_date in dates_order:
                     for order_name in dates_order[current_date]:
@@ -964,7 +1003,7 @@ class ShiftCalc:
                 #Иначе смотрим метрику сумма модулей разностей
                 for detail in details:
                     #TODO:продумать, как скипать детали посчитанные
-                    prev_empty: bool = True
+                    prev_empty: dict[str, bool] = {order.order_name: True for order in backet_order}
 
                     for i, operation in enumerate(self.shifts[detail]):
                         order_count, prev_empty = operation.next_revert(date=current_date, is_night=is_night,
@@ -993,8 +1032,8 @@ class ShiftCalc:
                                             else:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] = order_count[order]
 
-                    if prev_empty:
-                        is_fill[detail] = True
+                    #if prev_empty:
+                    #    is_fill[detail] = True
 
                 #проверка заказа на пустоту:
                 orders_to_delete: set[str] = set()
@@ -1093,13 +1132,12 @@ class ShiftCalc:
                 #Иначе смотрим метрику сумма модулей разностей
                 for detail in details:
 
-
-                    prev_empty: bool = True
+                    prev_empty: dict[str, bool] = {name: True for name in current_orders_count}
 
                     for i, operation in enumerate(self.shifts[detail]):
                         order_count, prev_empty = operation.next_revert(date=current_date, is_night=is_night,
-                                                                    prev_empty=prev_empty, detail_name=detail,
-                                                                    orders_night=nights_orders)
+                                                                        prev_empty=prev_empty, detail_name=detail,
+                                                                        orders_night=nights_orders)
 
 
                         next_names: set[str] = operation.next_operations[detail]
@@ -1135,8 +1173,8 @@ class ShiftCalc:
                                             else:
                                                 self.shifts[detail][j].prev_operations[detail][operation.operation_name][order] = order_count[order]
 
-                    if prev_empty:
-                        is_fill[detail] = True
+                    #if prev_empty:
+                    #    is_fill[detail] = True
 
                 #проверка заказа на пустоту:
                 orders_to_delete: set[str] = set()
@@ -1589,9 +1627,9 @@ NAME_TO_OP: dict[str, ShiftOperation] = \
 }
 
 details_to_ops: dict[str, list] = {
-    "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly, pack],
+    "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly], #pack],
     "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly],
-    "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": [plumb, laser, cut, fold, rolling, welding, assembly, pack]
+    "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": [plumb, laser, cut, fold, rolling, welding, assembly] #pack]
 }
 
 shift_calc = ShiftCalc(shifts=details_to_ops)

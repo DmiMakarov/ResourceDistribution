@@ -47,6 +47,9 @@ if "calc_result_df" not in st.session_state:
 if "calc_order" not in st.session_state:
     st.session_state.calc_order = None
 
+if "order_table_num" not in st.session_state:
+    st.session_state.order_table_num = {}
+
 def get_avaliable_calcs() -> list[str]:
     path: str = "./data/results"
 
@@ -119,34 +122,35 @@ with st.container():
                                                    options=get_avaliable_calcs(),
                                                    key=st.session_state.calc_result__)
 
-def aggrid_format_df(df: pd.DataFrame):
-    column_to_detach: set[str] =  set(["Сотрудник", "Операция"])
-    columns_def: list[dict] = []
-
-    for column in df.columns:
-        if column in column_to_detach:
-            columns_def.append({"headerName": column, "field": column, "pinned": "left"})
-        else:
-            columns_def.append({"headerName": column, "field": column})
-
-
-    gridOptions: dict = {
-        'defaultColDef': {
-            'resizable': True
-        },
-        'columnDefs': columns_def
-    }
-
-    AgGrid(df, gridOptions=gridOptions)
-
-def column_format_df(df: pd.DataFrame):
-    column_to_detach: set[str] =  set(["Сотрудник", "Операция", "Количество"])
-    columns: set[str] = set(df.columns) - column_to_detach
+def column_format_df(df: pd.DataFrame, name: str):
+    column_to_detach: list[str] =  list(["Сотрудник", "Операция", "Количество"])
+    columns: list[str] = df.iloc[:, 3:].columns
     
     col1, col2 = st.columns([0.3, 0.7])
     col1.dataframe(data=df[list(column_to_detach)])
-    col2.dataframe(data=df[list(columns)].style.applymap(color_survived).format(precision=1), hide_index=True)
-                   
+
+    tmp_df: pd.DataFrame = df[list(columns)]
+    dataframes: list[pd.DataFrame] = [tmp_df.iloc[:, i*14:i*14 + 14] for i in range(tmp_df.shape[1] // 14)]
+    
+    if tmp_df.shape[1] % 14 != 0:
+        dataframes.append(tmp_df.iloc[:, tmp_df.shape[1] // 14 * 14:tmp_df.shape[1]])
+
+    if name not in st.session_state.order_table_num:
+        st.session_state.order_table_num[name] = 0
+
+    def back_on_click():
+        st.session_state.order_table_num[name]-=1
+
+    def forwad_on_click():
+        st.session_state.order_table_num[name]+=1
+
+    col2.dataframe(data=dataframes[st.session_state.order_table_num[name]].style.applymap(color_survived).format(precision=1), hide_index=True)
+    col2.button(label="Назад",
+                on_click=back_on_click,
+                disabled=st.session_state.order_table_num[name]==0)
+    col2.button(label="Вперёд",
+                on_click=forwad_on_click,
+                disabled=(st.session_state.order_table_num[name]==len(dataframes) - 1))
 
 with st.container():
 
@@ -195,7 +199,7 @@ with st.container():
             st.write(f"## Смены для заказа {order_name}")
             #st.dataframe(data=shifts[order_name].style.applymap(color_survived).format(precision=1),
             #             key=st.session_state.calc_result_df)
-            column_format_df(df=shifts[order_name])
+            column_format_df(df=shifts[order_name], name=order_name)
             st.download_button(label='Скачать',
                                data=to_excel(shifts[order_name]) ,
                                file_name= 'shifts.xlsx',
@@ -225,7 +229,7 @@ with st.container():
             #st.dataframe(data=shifts["Итог"].style.applymap(color_survived).format(precision=1),
             #             key=st.session_state.calc_result_df)
             #aggrid_format_df(df=shifts["Итог"].style.applymap(color_survived).format(precision=1))
-            column_format_df(df=shifts["Итог"])
+            column_format_df(df=shifts["Итог"], name="Итог")
             st.download_button(label='Скачать',
                                data=to_excel(shifts["Итог"]) ,
                                file_name= 'shiftss.xlsx',
