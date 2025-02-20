@@ -1233,7 +1233,7 @@ class ShiftCalc:
 
         details_readiness["Итог"] = pd.concat(list(details_readiness.values())).fillna(0)
 
-        detail_packed: dist[str, pd.DataFrame] = {}
+        detail_packed: dict[str, pd.DataFrame] = {}
         
         for detail_red in details_readiness:
             tmp = details_readiness[detail_red].copy()
