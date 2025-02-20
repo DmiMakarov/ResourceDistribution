@@ -102,6 +102,11 @@ def delete_calc():
         except OSError:
             pass
 
+        try:
+            os.remove(path=f"{path}/{file}/grouped_readiness.xlsx")
+        except OSError:
+            pass
+
         Path.rmdir(f"{path}/{file}")
 
     with Path("./data/results/dates.json").open("w") as file:
@@ -145,25 +150,29 @@ def column_format_df(df: pd.DataFrame, name: str):
         st.session_state.order_table_num[name]+=1
 
     col2.dataframe(data=dataframes[st.session_state.order_table_num[name]].style.applymap(color_survived).format(precision=1), hide_index=True)
-    col2.button(label="Назад",
+    col21, col22 = col2.columns([0.2, 0.8])
+    col21.button(label="Назад",
                 on_click=back_on_click,
-                disabled=st.session_state.order_table_num[name]==0)
-    col2.button(label="Вперёд",
+                disabled=st.session_state.order_table_num[name]==0,
+                key=f"{name}_back")
+    col22.button(label="Вперёд",
                 on_click=forwad_on_click,
-                disabled=(st.session_state.order_table_num[name]==len(dataframes) - 1))
+                disabled=(st.session_state.order_table_num[name]==len(dataframes) - 1),
+                key=f"{name}_forward")
 
 with st.container():
 
     if st.session_state.calc_result_df is not None:
         st.session_state.calc_order = st.selectbox(label="Выберете заказ",
                                                      options=get_available_options(st.session_state.calc_result_df),
-                                                     key=st.session_state.calc_result_df)
+                                                     key=st.session_state.calc_result_df) 
 
     if st.session_state.calc_result_df is not None:
         input_: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/input.xlsx", sheet_name=None)
         operations: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/operations.xlsx", sheet_name=None)
         shifts: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/shifts.xlsx", sheet_name=None)
         details_readiness: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/readiness.xlsx", sheet_name=None)
+        order_grouped: dict[str, pd.DataFrame] = pd.read_excel(f"./data/results/{st.session_state.calc_result_df}/grouped_readiness.xlsx", sheet_name=None)
 
     if st.session_state.calc_order is not None and st.session_state.calc_result_df is not None:
 
@@ -212,6 +221,14 @@ with st.container():
                                data=to_excel(details_readiness[order_name]) ,
                                file_name= 'details_readiness.xlsx',
                                key=f"details_{order_name}")
+            
+            st.write(f"## Сгрупированные детали для заказа {order_name}")
+            st.dataframe(data=order_grouped[order_name].style.applymap(color_survived).format(precision=0),
+                         key=st.session_state.calc_result_df)
+            st.download_button(label='Скачать',
+                               data=to_excel(order_grouped[order_name]) ,
+                               file_name= 'order_grouped.xlsx',
+                               key=f"grouped_{order_name}")
 
         if st.session_state.calc_order == "Итог" or st.session_state.calc_order == "Показать всё":
 
@@ -233,5 +250,16 @@ with st.container():
             st.download_button(label='Скачать',
                                data=to_excel(shifts["Итог"]) ,
                                file_name= 'shiftss.xlsx',
-                                   key="shift_total")
+                               key="shift_total")
+            st.write(f"## Готовность деталей для заказов")
+            st.dataframe(data=details_readiness["Итог"].style.applymap(color_survived).format(precision=0),
+                         key="readiness_total")
+            
+            st.write(f"## Сгрупированные детали для заказов")
+            st.dataframe(data=order_grouped["Итог"].style.applymap(color_survived).format(precision=0),
+                         key=st.session_state.calc_result_df)
+            st.download_button(label='Скачать',
+                               data=to_excel(order_grouped["Итог"]) ,
+                               file_name= 'order_grouped.xlsx',
+                               key=f"grouped_total")
 

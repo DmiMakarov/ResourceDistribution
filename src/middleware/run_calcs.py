@@ -54,10 +54,11 @@ def run_calcs(request_id: int,
         for name, df in input_to_write.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
-    shifts, order_readiness = shift_calc.backet_calc(orders=[order for order, _ in orders], order_types=orders_type)
+    shifts, order_readiness, order_grouped = shift_calc.backet_calc(orders=[order for order, _ in orders], order_types=orders_type)
 
     for key in order_readiness:
         order_readiness[key] = order_readiness[key].replace(details_to_details)
+        order_grouped[key] = order_grouped[key].replace(details_to_details)
 
     with pd.ExcelWriter(f"./data/results/{request_id}/operations.xlsx") as writer:
         for name, df in operations_to_write.items():
@@ -70,6 +71,11 @@ def run_calcs(request_id: int,
     with pd.ExcelWriter(f"./data/results/{request_id}/readiness.xlsx") as writer:
         for name, df in order_readiness.items():
             df.to_excel(writer, sheet_name=name, index=False)
+
+    with pd.ExcelWriter(f"./data/results/{request_id}/grouped_readiness.xlsx") as writer:
+        for name, df in order_grouped.items():
+            df.to_excel(writer, sheet_name=name, index=False)
+
 
 def run_calcs_old(request_id: int,
                   input_details: pd.DataFrame,

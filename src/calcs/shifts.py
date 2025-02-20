@@ -102,13 +102,11 @@ MAP_OPERATIONS: dict[str, dict] = {
                                  },
              "next_operations": {
                                  "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx":
-                                 {},
-                                 #{"Слесарь по сборке|Упаковочная"},
+                                 {"Слесарь по сборке|Упаковочная"},
                                  "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx":
                                  {},
                                  "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx":
-                                 #{"Слесарь по сборке|Упаковочная"}
-                                 {}
+                                 {"Слесарь по сборке|Упаковочная"}
                                 }
             },
             "Слесарь по сборке|Упаковочная":
@@ -478,23 +476,34 @@ class ShiftOperation:
             if is_night:
                 count_per_ops[i] = sum([value for order, value in val.items() if order in orders_night])
                 for order in val:
-                    if val[order] > 0 and order in orders_night:
+                    if val[order] > 0 and order in orders_night and prev_empty[order]:
                         orders_to_count_prev.append(order)
             else:
                 count_per_ops[i] = sum(val.values())
                 for order in val:
-                    if val[order] > 0:
+                    if val[order] > 0: #TODO надо добавить то, что учитывает ещё Prev_empty, но это слишком много
                         orders_to_count_prev.append(order)
 
             i += 1
+        #две идентичные ситуаци
+        #1. Заказ B prev_empty True, готов делать упаковочную, A не готов, ждём B
+        #2. Заказ 
+        #if len(orders_to_count_prev) == 0:
+        #    for _, val in self.prev_operations[detail_name].items():
+        #        for order in val:
+        #            if val[order] > 0:
+        #                orders_to_count_prev.append(order)
+
+        
 
         min_available_details = np.min(count_per_ops)
 
-        total_prev_empty: bool = True
+        total_prev_empty: bool = False
 
         for order in orders_to_count_prev:
-            total_prev_empty = total_prev_empty and prev_empty[order]
-            if not total_prev_empty:
+            total_prev_empty = True
+            if not prev_empty[order]:
+                total_prev_empty = False
                 break
 
         if not total_prev_empty:
@@ -834,7 +843,7 @@ class ShiftCalc:
 
         return details_readiness
     
-    def __set_start_to_emprty_dict(self, details: set[str]):
+    def __set_start_to_empty_dict(self, details: set[str]):
         for detail in details:
             if "Start" in self.shifts[detail][0].prev_operations[detail]:
                 self.shifts[detail][0].prev_operations[detail]["Start"] = {}
@@ -940,9 +949,7 @@ class ShiftCalc:
 
         for order in backet_order:
             orders_count[order.order_name] = order
-
-            for detail_ in order.details_count:
-                details.add(detail_)
+            details.update(order.details_count.keys())
 
         current_end_dates: list[datetime.date] = [datetime.date(year=1974, day=27, month=2)] * len(end_dates)
         backet_order_idxs: dict[str, int] = {order.order_name: i for i, order in enumerate(backet_order)}
@@ -978,8 +985,8 @@ class ShiftCalc:
             for detail in details:
                 is_fill[detail] = False
 
-            self.__set_start_to_emprty_dict(details=details)
-
+            self.__set_start_to_empty_dict(details=details)
+            details_started: set[str] = set()
             while True:
                 if current_date in dates_order:
                     for order_name in dates_order[current_date]:
@@ -987,6 +994,7 @@ class ShiftCalc:
                         self.__fill_operations(operations=orders_count[order_name].operations,
                                                input_count=orders_count[order_name].details_count,
                                                details=details_to_compute)
+                        details_started.update(orders_count[order_name].details_count.keys())
                         self.__fill_start(details_count=orders_count[order_name].details_count, order_name=order_name)
 
                     del dates_order[current_date]
@@ -1001,7 +1009,7 @@ class ShiftCalc:
                 #Если все нули - остановить все циклы, записать как решение
                 #Если есть хоть одно превышение, то следующий вариант
                 #Иначе смотрим метрику сумма модулей разностей
-                for detail in details:
+                for detail in details_started:
                     #TODO:продумать, как скипать детали посчитанные
                     prev_empty: dict[str, bool] = {order.order_name: True for order in backet_order}
 
@@ -1109,6 +1117,9 @@ class ShiftCalc:
             for detail in details:
                 is_fill[detail] = False
 
+            self.__set_start_to_empty_dict(details=details)
+            details_started: set[str] = set()
+
             while True:
                 if current_date in dates_order:
                     for order_name in dates_order[current_date]:
@@ -1116,6 +1127,7 @@ class ShiftCalc:
                         self.__fill_operations(operations=orders_count[order_name].operations,
                                                input_count=orders_count[order_name].details_count,
                                                details=details_to_compute)
+                        details_started.update(orders_count[order_name].details_count.keys())
                         self.__fill_start(details_count=orders_count[order_name].details_count, order_name=order_name)
 
                     del dates_order[current_date]
@@ -1130,7 +1142,7 @@ class ShiftCalc:
                 #Если все нули - остановить все циклы, записать как решение
                 #Если есть хоть одно превышение, то следующий вариант
                 #Иначе смотрим метрику сумма модулей разностей
-                for detail in details:
+                for detail in details_started:
 
                     prev_empty: dict[str, bool] = {name: True for name in current_orders_count}
 
@@ -1219,7 +1231,26 @@ class ShiftCalc:
         answ["Итог"] = self.__prepare_answ(details=list(all_details), orders_types=order_types, order_name=None)
         self.clear()
 
-        return answ, details_readiness
+        details_readiness["Итог"] = pd.concat(list(details_readiness.values())).fillna(0)
+
+        detail_packed: dist[str, pd.DataFrame] = {}
+        
+        for detail_red in details_readiness:
+            tmp = details_readiness[detail_red].copy()
+            tmp = tmp.reset_index().drop(columns=["index"])
+            details = tmp['Изделие']
+            tmp = tmp.drop(columns=["Изделие"])
+            tmp = tmp.T.cumsum()
+            
+            for order in tmp.columns:
+                tmp["mod"] = tmp[order] // 10
+                tmp["count"] = tmp.groupby("mod").cumcount()
+                tmp.loc[tmp["count"]!=0, order] = 0
+            
+            detail_packed[detail_red] = tmp.drop(columns=["mod", "count"]).T
+            detail_packed[detail_red].insert(loc=0, column="Изделие", value=details)
+
+        return answ, details_readiness, detail_packed
 
     def calc(self,
              orders: list[Order],
@@ -1433,13 +1464,18 @@ class ShiftCalc:
                     if op.operation_name == start_op:
 
                         if order_name is None:
-                            op.prev_operations[detail]["Start"] += details_count[detail]
+                            op.prev_operations[detail]["Start"] = details_count[detail]
                         else:
                             if isinstance(op.prev_operations[detail]["Start"], int):
                                 tmp_: dict[str, int] = {order_name: details_count[detail]}
                                 op.prev_operations[detail]["Start"] = tmp_
                             else:
-                                op.prev_operations[detail]["Start"][order_name] = details_count[detail]
+                                if order_name in op.prev_operations[detail]["Start"]:
+                                    if op.prev_operations[detail]["Start"][order_name] == 0:
+                                        op.prev_operations[detail]["Start"][order_name] = details_count[detail]
+                                else:
+                                    op.prev_operations[detail]["Start"][order_name] = details_count[detail]
+                                
 
                         break
 
@@ -1627,9 +1663,9 @@ NAME_TO_OP: dict[str, ShiftOperation] = \
 }
 
 details_to_ops: dict[str, list] = {
-    "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly], #pack],
+    "ЗМСДМГС6000000201Дверьтип6990х2040левая.xlsx": [laser, fold, welding, color, assembly, pack],
     "ЗМСПУБДТ00000ПодшипниковыйузелБДТ.xlsx": [cut, lathe, milling, color, assembly],
-    "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": [plumb, laser, cut, fold, rolling, welding, assembly] #pack]
+    "ЗМСКДОП7502х400000Кормушкадоминокомбинированная.xlsx": [plumb, laser, cut, fold, rolling, welding, assembly, pack]
 }
 
 shift_calc = ShiftCalc(shifts=details_to_ops)
